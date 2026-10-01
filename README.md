@@ -104,7 +104,7 @@ frontend เรียก API ผ่าน proxy ของ Vite (`/api` → `http
 
 | Field  | Details                                                |
 | ------ | ------------------------------------------------------- |
-| Role      | Full-stack Developer                                     |
+| Role      | Full-Stack Developer                                     |
 | Email     | [rapepan23.rpp@gmail.com](mailto:rapepan23.rpp@gmail.com) |
 | GitHub    | [@rapepan](https://github.com/rapepan)                    |
 | Portfolio | [portfolio-rapepan.vercel.app](https://portfolio-rapepan.vercel.app/) |

@@ -34,6 +34,7 @@ export const NAV_GROUPS: NavGroup[] = [
     { key: 'my-feedback', page: 'myfeedback', path: '/my-feedback', icon: 'fa-list-check', label: 'เรื่องที่แจ้ง' },
   ]},
   { label: 'ผู้ดูแลระบบ', icon: 'fa-gear', items: [
+    { key: 'admin-users', page: 'admin', path: '/admin/users', icon: 'fa-users', label: 'ผู้ใช้งานระบบ' },
     { key: 'admin-feedback', page: 'admin', path: '/admin/feedback', icon: 'fa-comment-dots', label: 'แจ้งปัญหา / ข้อเสนอแนะ' },
     { key: 'admin-data', page: 'admin', path: '/admin/data', icon: 'fa-database', label: 'สถานะข้อมูล' },
     { key: 'admin-audit', page: 'admin', path: '/admin/audit', icon: 'fa-clock-rotate-left', label: 'ประวัติการใช้งาน' },

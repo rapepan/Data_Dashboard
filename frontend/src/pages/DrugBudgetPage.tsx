@@ -14,8 +14,16 @@ import { ApiError } from '../services/apiClient';
 import type { DrugCatalogItem, DrugCompare } from '../types/reports';
 import { formatDmy, formatNumber } from '../utils/format';
 
-const HERB_COLOR = '#8b5cf6';
-const COMMON_COLOR = '#0ea5e9';
+const MODERN_COLOR = '#0ea5e9';
+const THAI_COLOR = '#8b5cf6';
+const INHOUSE_COLOR = '#d97706';
+
+type EdFilter = 'all' | 'ed' | 'ned';
+const ED_FILTERS: { value: EdFilter; label: string }[] = [
+  { value: 'all', label: 'ทั้งหมด' },
+  { value: 'ed', label: 'ในบัญชี' },
+  { value: 'ned', label: 'นอกบัญชี' },
+];
 /** ปีเก่า → ปีล่าสุด */
 const YEAR_COLORS = ['#c7d2fe', '#818cf8', '#4f46e5'];
 
@@ -64,6 +72,7 @@ function DrugCompareView({ compare }: { compare: DrugCompare }) {
 export default function DrugBudgetPage() {
   const { filter, applyFilter, data, error, refresh } = useReport(fetchDrugBudgetReport);
   const [drug, setDrug] = useState<DrugCatalogItem | null>(null);
+  const [edFilter, setEdFilter] = useState<EdFilter>('all');
   const [compare, setCompare] = useState<DrugCompare | null>(null);
   const [compareError, setCompareError] = useState<string | null>(null);
   // ผลเปรียบเทียบที่ได้ล่าสุดเป็นของยา/วันไหน — ยังไม่ตรงกับที่เลือก = กำลังโหลด (แสดง Skeleton)
@@ -102,16 +111,44 @@ export default function DrugBudgetPage() {
       />
       {error && <div className="notice-bar error"><i className="fa-solid fa-triangle-exclamation" /><span>{error}</span></div>}
 
-      {!data ? <PageSkeleton cards={4} rows={[1, 2]} /> : (() => {
+      {!data ? <PageSkeleton cards={5} rows={[1, 1, 2]} /> : (() => {
         const period = `${formatDmy(data.start)} – ${formatDmy(data.end)}`;
         const years = compare?.years.map(y => y.fiscalYear).reverse().join(', ');
+        // ตัวกรองบัญชียาหลัก — กรองตาราง และคิดยอดในการ์ดใหม่จากรายการที่เหลือ
+        const pass = (item: { ed: boolean }) => edFilter === 'all' || item.ed === (edFilter === 'ed');
+        const lists = {
+          modern: data.topDrugs.modern.filter(pass),
+          thai: data.topDrugs.thai.filter(pass),
+          inhouse: data.topDrugs.inhouse.filter(pass),
+        };
+        const total = (items: { qty: number; value: number }[]) => ({ qty: items.reduce((s, i) => s + i.qty, 0), value: items.reduce((s, i) => s + i.value, 0) });
+        const byType = { modern: total(lists.modern), thai: total(lists.thai), inhouse: total(lists.inhouse) };
+        const all = total([...lists.modern, ...lists.thai, ...lists.inhouse]);
+        const edLabel = edFilter === 'all' ? '' : edFilter === 'ed' ? ' · ในบัญชียาหลัก' : ' · นอกบัญชียาหลัก';
+        const edShare = data.totals.value ? (data.totals.ed.value / data.totals.value) * 100 : 0;
         return (
           <>
-            <section className="grid-4">
-              <KpiCard accent="indigo" icon="fa-boxes-stacked" title="ปริมาณการใช้ยารวม" value={formatNumber(data.totals.qty)} unit="ชิ้น" badgeIcon="fa-calendar-days" badge={period} />
-              <KpiCard accent="plum" icon="fa-coins" title="มูลค่าการใช้ยารวม" value={money.format(data.totals.value)} unit="บาท" badgeIcon="fa-calendar-days" badge={period} />
-              <KpiCard accent="plum" icon="fa-seedling" title="มูลค่าการใช้ยาสมุนไพร" value={money.format(data.totals.herbValue)} unit="บาท" badgeIcon="fa-calendar-days" badge={period} />
-              <KpiCard accent="indigo" icon="fa-capsules" title="มูลค่าการใช้ยาสามัญ" value={money.format(data.totals.commonValue)} unit="บาท" badgeIcon="fa-calendar-days" badge={period} />
+            <div className="drug-ed-bar">
+              <span className="drug-ed-label"><i className="fa-solid fa-book-medical" /> บัญชียาหลักแห่งชาติ</span>
+              <div className="segmented">
+                {ED_FILTERS.map(f => (
+                  <button key={f.value} className={edFilter === f.value ? 'active' : ''} onClick={() => setEdFilter(f.value)}>{f.label}</button>
+                ))}
+              </div>
+              <div className="drug-ed-split" title="สัดส่วนมูลค่าการใช้ยา ในบัญชี / นอกบัญชียาหลัก (ช่วงวันที่ที่เลือก)">
+                <span className="drug-ed-track"><span style={{ width: `${edShare}%` }} /></span>
+                <small>
+                  ในบัญชี <b>{edShare.toFixed(1)}%</b> ({data.totals.ed.items} รายการ) · นอกบัญชี <b>{(100 - edShare).toFixed(1)}%</b> ({data.totals.ned.items} รายการ)
+                </small>
+              </div>
+            </div>
+
+            <section className="grid-5">
+              <KpiCard accent="indigo" icon="fa-boxes-stacked" title={`ปริมาณการใช้ยารวม${edLabel}`} value={formatNumber(all.qty)} unit="ชิ้น" badgeIcon="fa-calendar-days" badge={period} />
+              <KpiCard accent="plum" icon="fa-coins" title={`มูลค่าการใช้ยารวม${edLabel}`} value={money.format(all.value)} unit="บาท" badgeIcon="fa-calendar-days" badge={period} />
+              <KpiCard accent="plum" icon="fa-seedling" title="มูลค่าการใช้ยาสมุนไพร" value={money.format(byType.thai.value)} unit="บาท" badgeIcon="fa-list" badge={`${lists.thai.length} รายการ`} />
+              <KpiCard accent="indigo" icon="fa-capsules" title="มูลค่าการใช้ยาสามัญ" value={money.format(byType.modern.value)} unit="บาท" badgeIcon="fa-list" badge={`${lists.modern.length} รายการ`} />
+              <KpiCard accent="amber" icon="fa-flask" title="มูลค่าการใช้ยาผลิตใช้เอง" value={money.format(byType.inhouse.value)} unit="บาท" badgeIcon="fa-list" badge={`${lists.inhouse.length} รายการ`} />
             </section>
 
             <Panel
@@ -138,12 +175,16 @@ export default function DrugBudgetPage() {
               )}
             </Panel>
 
+            <Panel title={`อันดับการใช้ยาสามัญ${edLabel}`} subtitle={`ช่วงวันที่: ${period} · ${lists.modern.length} รายการ`} printable className="mb-row">
+              <DrugTable items={lists.modern} nameLabel="ชื่อยาสามัญ" searchPlaceholder="ค้นหายาสามัญ..." accent={MODERN_COLOR} />
+            </Panel>
+
             <section className="report-row cols-2">
-              <Panel title="อันดับการใช้ยาสมุนไพร" subtitle={`ช่วงวันที่: ${period}`} printable>
-                <DrugTable items={data.topDrugs.herb} nameLabel="ชื่อยาสมุนไพร" searchPlaceholder="ค้นหายาสมุนไพร..." accent={HERB_COLOR} />
+              <Panel title={`อันดับการใช้ยาสมุนไพร${edLabel}`} subtitle={`ช่วงวันที่: ${period} · ${lists.thai.length} รายการ`} printable>
+                <DrugTable items={lists.thai} nameLabel="ชื่อยาสมุนไพร" searchPlaceholder="ค้นหายาสมุนไพร..." accent={THAI_COLOR} />
               </Panel>
-              <Panel title="อันดับการใช้ยาสามัญ" subtitle={`ช่วงวันที่: ${period}`} printable>
-                <DrugTable items={data.topDrugs.common} nameLabel="ชื่อยาสามัญ" searchPlaceholder="ค้นหายาสามัญ..." accent={COMMON_COLOR} />
+              <Panel title={`อันดับการใช้ยาผลิตใช้เอง${edLabel}`} subtitle={`ช่วงวันที่: ${period} · ${lists.inhouse.length} รายการ`} printable>
+                <DrugTable items={lists.inhouse} nameLabel="ชื่อยาผลิตใช้เอง" searchPlaceholder="ค้นหายาผลิตใช้เอง..." accent={INHOUSE_COLOR} />
               </Panel>
             </section>
           </>

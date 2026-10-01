@@ -263,20 +263,32 @@ export interface ThaiMedicineReport {
 }
 
 /* ----------------------------- ปริมาณการใช้ยา ----------------------------- */
-export type DrugType = 'herb' | 'common';
+/** ตาม HOSxP drugitems.sks_product_category_id — modern = ยาแผนปัจจุบัน · thai = ยาแผนไทย · inhouse = ยาแผนปัจจุบันผลิตใช้เอง */
+export type DrugType = 'modern' | 'thai' | 'inhouse';
 
 export interface DrugCatalogItem {
   code: string;
   name: string;
   unit: string;
   type: DrugType;
+  /** true = ในบัญชียาหลักแห่งชาติ · false = นอกบัญชี (drugitems.income 03 / 17) */
+  ed: boolean;
+}
+
+/** ยอดรวมของกลุ่มยา */
+export interface DrugGroupTotal {
+  qty: number;
+  value: number;
+  /** จำนวนรายการยาที่มีการใช้ */
+  items: number;
 }
 
 export interface DrugBudgetReport {
   start: string;
   end: string;
-  totals: { qty: number; value: number; herbValue: number; commonValue: number };
-  topDrugs: { herb: DrugItem[]; common: DrugItem[] };
+  totals: DrugGroupTotal & { byType: Record<DrugType, DrugGroupTotal>; ed: DrugGroupTotal; ned: DrugGroupTotal };
+  /** ทุกรายการที่มีการใช้ในช่วงที่เลือก แยกตามชนิดยา (เรียงตามจำนวนชิ้น) */
+  topDrugs: Record<DrugType, (DrugItem & { ed: boolean })[]>;
   /** รายการยาทั้งหมด (ใช้ค้นหาเพื่อเปรียบเทียบย้อนหลัง) */
   catalog: DrugCatalogItem[];
 }

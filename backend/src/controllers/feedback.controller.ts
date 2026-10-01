@@ -7,6 +7,7 @@ import {
 import { logger } from '../utils/logger';
 import { normalizeThaiPhone } from '../utils/phone';
 import { auditLog, GUEST_NAME } from '../auth/audit-log';
+import { userSettings } from '../auth/user-settings';
 import { notifyService } from '../services/notify.service';
 import { feedbackImages, ImageError, parseImages } from '../feedback/feedback-images';
 
@@ -57,7 +58,7 @@ const badRequest = (reply: FastifyReply, message: string) =>
 
 export const feedbackController = {
   /** ต้อง login เท่านั้น (route ใช้ requireAuth) — จะได้รู้ว่าใครแจ้ง และผู้แจ้งติดตามสถานะได้ */
-  submit(req: FastifyRequest<{ Body: SubmitBody }>, reply: FastifyReply) {
+  async submit(req: FastifyRequest<{ Body: SubmitBody }>, reply: FastifyReply) {
     const user = currentUser(req);
     if (!user) return reply.status(401).send({ statusCode: 401, error: 'Unauthorized', message: 'กรุณาเข้าสู่ระบบก่อนแจ้งปัญหา' });
     const category = clean(req.body?.category, 20) as FeedbackCategory;
@@ -92,25 +93,37 @@ export const feedbackController = {
       return reply.status(429).send({ statusCode: 429, error: 'Too Many Requests', message: 'ส่งหลายครั้งเกินไป กรุณารอสักครู่แล้วลองใหม่' });
     }
 
-    const saved = feedbackStore.add({
-      category,
-      page: clean(req.body?.page, 80) || 'ทั่วไป',
-      message,
-      name,
-      position,
-      contact,
-      ...(contactPhone ? { contactPhone } : {}),
-      ...(contactLine ? { contactLine } : {}),
-      loginname: user.loginname,
-      ip: req.ip.replace(/^::ffff:/, ''),
-    });
-    if (images.length) {
-      saved.images = feedbackImages.save(saved.id, images);
-      feedbackStore.setImages(saved.id, saved.images);
+    let saved: FeedbackEntry;
+    try {
+      saved = await feedbackStore.add({
+        category,
+        page: clean(req.body?.page, 80) || 'ทั่วไป',
+        message,
+        name,
+        position,
+        contact,
+        ...(contactPhone ? { contactPhone } : {}),
+        ...(contactLine ? { contactLine } : {}),
+        loginname: user.loginname,
+        ip: req.ip.replace(/^::ffff:/, ''),
+      });
+    } catch (error) {
+      // ฐานข้อมูลล่ม — หน้าเว็บยังเก็บข้อความในฟอร์มไว้ ผู้ใช้กดส่งใหม่ได้
+      logger.error(`[feedback] บันทึกเรื่องแจ้งปัญหาไม่ได้ — ${(error as Error).message}`);
+      return reply.status(503).send({ statusCode: 503, error: 'Service Unavailable', message: 'บันทึกเรื่องไม่ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง' });
     }
-    if (lineQr) {
-      saved.lineQr = feedbackImages.saveLineQr(saved.id, lineQr);
-      if (saved.lineQr) feedbackStore.setLineQr(saved.id, saved.lineQr);
+    try {
+      if (images.length) {
+        saved.images = feedbackImages.save(saved.id, images);
+        await feedbackStore.setImages(saved.id, saved.images);
+      }
+      if (lineQr) {
+        saved.lineQr = feedbackImages.saveLineQr(saved.id, lineQr);
+        if (saved.lineQr) await feedbackStore.setLineQr(saved.id, saved.lineQr);
+      }
+    } catch (error) {
+      // ตัวเรื่องบันทึกแล้ว แต่ผูกรูปไม่สำเร็จ — ไม่ให้ผู้ใช้ส่งซ้ำ (จะได้เรื่องซ้ำ) แค่แจ้งในเทอร์มินัล
+      logger.error(`[feedback] #${saved.id} บันทึกรายชื่อรูปแนบไม่ได้ — ${(error as Error).message}`);
     }
     // แจ้งเข้ามือถือ (Telegram) แบบไม่รอ — ส่งไม่สำเร็จก็ไม่กระทบการบันทึก
     notifyService.feedback(saved);
@@ -121,9 +134,9 @@ export const feedbackController = {
   },
 
   /** ผู้ดูแลระบบ: รายการทั้งหมด */
-  list(req: FastifyRequest<{ Querystring: { status?: string } }>) {
+  async list(req: FastifyRequest<{ Querystring: { status?: string } }>) {
     const status = FEEDBACK_STATUSES.includes(req.query.status as FeedbackStatus) ? (req.query.status as FeedbackStatus) : undefined;
-    const all = feedbackStore.list();
+    const all = await feedbackStore.list();
     return {
       entries: status ? all.filter(e => e.status === status) : all,
       counts: {
@@ -136,10 +149,16 @@ export const feedbackController = {
   },
 
   /** ผู้ดูแลระบบ: กระดิ่งแจ้งเตือน — จำนวนเรื่องที่ยังไม่ดำเนินการ + 5 เรื่องล่าสุด (ข้อความตัดสั้น) */
-  summary() {
-    const pending = feedbackStore.list('new');
+  async summary(req: FastifyRequest) {
+    const admin = currentUser(req);
+    const [pending, seenAt] = await Promise.all([
+      feedbackStore.list('new'),
+      admin ? userSettings.get(admin.loginname, 'feedback_bell_seen') : null,
+    ]);
     return {
       newCount: pending.length,
+      // เรื่องล่าสุดที่ผู้ดูแลคนนี้เคยกดดูกระดิ่ง — เก็บฝั่ง server ใช้เครื่องไหนก็เห็นตรงกัน
+      seenAt: seenAt ?? '',
       latest: pending.slice(0, 5).map(e => ({
         id: e.id,
         time: e.time,
@@ -152,6 +171,14 @@ export const feedbackController = {
     };
   },
 
+  /** ผู้ดูแลระบบ: กดดูกระดิ่งแล้ว — จำเวลาของเรื่องล่าสุดที่เห็น (กระดิ่งหยุดสั่นทุกเครื่องของผู้ดูแลคนนี้) */
+  async bellSeen(req: FastifyRequest<{ Body: { time?: string } }>, reply: FastifyReply) {
+    const time = clean(req.body?.time, 40);
+    if (Number.isNaN(Date.parse(time))) return badRequest(reply, 'เวลาไม่ถูกต้อง');
+    await userSettings.set(currentUser(req)!.loginname, 'feedback_bell_seen', new Date(time).toISOString());
+    return { ok: true };
+  },
+
   /** ผู้ดูแลระบบ: ดูรูปแนบ (ไม่มีลิงก์สาธารณะ) */
   image(req: FastifyRequest<{ Params: { id: string; file: string } }>, reply: FastifyReply) {
     const buffer = feedbackImages.read(req.params.id, req.params.file);
@@ -160,12 +187,12 @@ export const feedbackController = {
   },
 
   /** ผู้ดูแลระบบ: เปลี่ยนสถานะ + ข้อความถึงผู้แจ้ง (ไม่บังคับ) — บันทึกลงไทม์ไลน์ ผู้แจ้งเห็นในหน้า "เรื่องที่แจ้ง" */
-  setStatus(req: FastifyRequest<{ Params: { id: string }; Body: { status?: string; note?: string } }>, reply: FastifyReply) {
+  async setStatus(req: FastifyRequest<{ Params: { id: string }; Body: { status?: string; note?: string } }>, reply: FastifyReply) {
     const status = req.body?.status as FeedbackStatus;
     if (!FEEDBACK_STATUSES.includes(status)) return badRequest(reply, 'สถานะไม่ถูกต้อง');
     const note = clean(req.body?.note, 1000) || undefined;
     const admin = currentUser(req);
-    const updated = feedbackStore.setStatus(req.params.id, status, { loginname: admin?.loginname ?? '-', name: admin?.displayName }, note);
+    const updated = await feedbackStore.setStatus(req.params.id, status, { loginname: admin?.loginname ?? '-', name: admin?.displayName }, note);
     if (!updated) return reply.status(404).send({ statusCode: 404, error: 'Not Found', message: 'ไม่พบรายการ' });
     auditLog.write({ loginname: admin?.loginname ?? GUEST_NAME, action: 'feedback_status', detail: `#${updated.id} → ${STATUS_LABEL[status]}${note ? ` · "${note.slice(0, 60)}"` : ''}`, ip: req.ip });
     logger.info(`[feedback] #${updated.id} → ${status}${note ? ' (มีข้อความ)' : ''} โดย ${admin?.loginname ?? '-'}`);
@@ -175,16 +202,16 @@ export const feedbackController = {
   /* ---------- ผู้แจ้ง: ติดตามเรื่องของตัวเอง ---------- */
 
   /** เรื่องที่แจ้ง — พร้อมไทม์ไลน์ + ธงว่ามีความเคลื่อนไหวใหม่ที่ยังไม่เห็น */
-  mine(req: FastifyRequest) {
+  async mine(req: FastifyRequest) {
     const user = currentUser(req)!;
-    const entries = feedbackStore.listByReporter(user.loginname).map(toReporterView);
+    const entries = (await feedbackStore.listByReporter(user.loginname)).map(toReporterView);
     return { entries, unread: entries.filter(e => e.unread).length };
   },
 
   /** กระดิ่ง/ป้ายเมนูของผู้แจ้ง (เรียกแบบเบื้องหลังทุก 1 นาที) */
-  mineSummary(req: FastifyRequest) {
+  async mineSummary(req: FastifyRequest) {
     const user = currentUser(req)!;
-    const unread = feedbackStore.listByReporter(user.loginname).map(toReporterView).filter(e => e.unread);
+    const unread = (await feedbackStore.listByReporter(user.loginname)).map(toReporterView).filter(e => e.unread);
     return {
       unread: unread.length,
       latest: unread.slice(0, 5).map(e => {
@@ -195,15 +222,15 @@ export const feedbackController = {
   },
 
   /** ผู้แจ้งเปิดหน้า "เรื่องที่แจ้ง" แล้ว → ความเคลื่อนไหวทั้งหมดถือว่าเห็นแล้ว */
-  mineSeen(req: FastifyRequest) {
-    feedbackStore.markSeenByReporter(currentUser(req)!.loginname);
+  async mineSeen(req: FastifyRequest) {
+    await feedbackStore.markSeenByReporter(currentUser(req)!.loginname);
     return { ok: true };
   },
 
   /** รูปแนบของเรื่องที่ตัวเองแจ้ง */
-  mineImage(req: FastifyRequest<{ Params: { id: string; file: string } }>, reply: FastifyReply) {
+  async mineImage(req: FastifyRequest<{ Params: { id: string; file: string } }>, reply: FastifyReply) {
     const user = currentUser(req)!;
-    const own = feedbackStore.listByReporter(user.loginname).some(e => e.id === req.params.id);
+    const own = (await feedbackStore.listByReporter(user.loginname)).some(e => e.id === req.params.id);
     const buffer = own ? feedbackImages.read(req.params.id, req.params.file) : null;
     if (!buffer) return reply.status(404).send({ statusCode: 404, error: 'Not Found', message: 'ไม่พบรูป' });
     return reply.type(feedbackImages.mimeOf(req.params.file)).header('Cache-Control', 'private, max-age=86400').send(buffer);

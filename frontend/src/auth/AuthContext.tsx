@@ -70,8 +70,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // session หมดอายุระหว่างใช้งาน → กลับเป็นผู้เยี่ยมชม (ยังดูหน้าสาธารณะต่อได้)
   useEffect(() => {
-    const onExpired = () => {
-      setNotice('หมดเวลาการใช้งาน ระบบเปลี่ยนเป็นโหมดผู้เยี่ยมชมแล้ว — เข้าสู่ระบบใหม่เพื่อใช้งานส่วนที่ต้องมีสิทธิ์');
+    const onExpired = (event: Event) => {
+      setNotice((event as CustomEvent<string>).detail === 'revoked'
+        ? 'ผู้ดูแลระบบให้ออกจากระบบแล้ว ระบบเปลี่ยนเป็นโหมดผู้เยี่ยมชม — เข้าสู่ระบบใหม่ได้ทันที'
+        : 'หมดเวลาการใช้งาน ระบบเปลี่ยนเป็นโหมดผู้เยี่ยมชมแล้ว — เข้าสู่ระบบใหม่เพื่อใช้งานส่วนที่ต้องมีสิทธิ์');
       refresh();
     };
     window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);

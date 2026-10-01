@@ -19,6 +19,7 @@ import DrugBudgetPage from '../pages/DrugBudgetPage';
 import AuditLogPage from '../pages/admin/AuditLogPage';
 import FeedbackPage from '../pages/admin/FeedbackPage';
 import DataStatusPage from '../pages/admin/DataStatusPage';
+import UsersPage from '../pages/admin/UsersPage';
 import ContactPage from '../pages/ContactPage';
 import PostalDrugPage from '../pages/PostalDrugPage';
 import MyFeedbackPage from '../pages/MyFeedbackPage';
@@ -50,6 +51,7 @@ export default function AppRoutes() {
         <Route path="/admin/audit" element={guard('admin', <AuditLogPage />)} />
         <Route path="/admin/feedback" element={guard('admin', <FeedbackPage />)} />
         <Route path="/admin/data" element={guard('admin', <DataStatusPage />)} />
+        <Route path="/admin/users" element={guard('admin', <UsersPage />)} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

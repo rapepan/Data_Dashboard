@@ -68,8 +68,8 @@ export const REPORTS: ReportDef[] = [
   { name: 'telemedicine', label: 'การแพทย์ทางไกล', source: 'mock', version: 8, load: byRange(generateTelemedicineReport), prewarm: () => defaultRanges() },
   { name: 'postal-drug', label: 'การส่งยาทางไปรษณีย์', source: 'mock', version: 5, load: byRange(generatePostalDrugReport), prewarm: () => defaultRanges() },
   { name: 'thai-medicine', label: 'แพทย์แผนไทย / แผนจีน', source: 'mock', version: 10, load: byRange(generateThaiMedicineReport), prewarm: () => defaultRanges() },
-  { name: 'drug-budget', label: 'ปริมาณการใช้ยา', source: 'mock', version: 8, load: byRange(generateDrugBudgetReport), prewarm: () => defaultRanges() },
-  { name: 'drug-compare', label: 'ปริมาณการใช้ยา · เปรียบเทียบรายการยา', source: 'mock', version: 8, load: mock(p => generateDrugCompare(p.code, p.end)) },
+  { name: 'drug-budget', label: 'ปริมาณการใช้ยา', source: 'mock', version: 9, load: byRange(generateDrugBudgetReport), prewarm: () => defaultRanges() },
+  { name: 'drug-compare', label: 'ปริมาณการใช้ยา · เปรียบเทียบรายการยา', source: 'mock', version: 9, load: mock(p => generateDrugCompare(p.code, p.end)) },
   { name: 'readmit', label: 'Re-admit (28 วัน)', source: 'mock', version: 8, load: mock(p => generateReadmitReport(p.start, p.end, p.ward)), prewarm: () => defaultRanges({ ward: 'all' }) },
   { name: 'referral', label: 'ข้อมูลการส่งต่อ (Refer)', source: 'mock', version: 8, load: mock(p => generateReferralReport(p.start, p.end, p.point)), prewarm: () => defaultRanges({ point: 'all' }) },
 ];

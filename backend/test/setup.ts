@@ -14,6 +14,9 @@ process.env.TELEGRAM_CHAT_ID = '';
 process.env.APP_PUBLIC_URL = '';
 process.env.AUTH_SECRET = 'test-secret-for-vitest-only';
 process.env.NO_COLOR = '1';
+// ไม่ใช้ฐาน data_dashboard จริง — ชุดทดสอบปกติเก็บเป็นไฟล์ในโฟลเดอร์ชั่วคราว (ชุดทดสอบฐานข้อมูลแยกไว้ที่ npm run test:db)
+process.env.DASHBOARD_DB_HOST = '';
+process.env.DASHBOARD_DB_DATABASE = '';
 
 afterAll(() => {
   rmSync(dataDir, { recursive: true, force: true });

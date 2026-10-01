@@ -12,7 +12,8 @@
     "telegram:chat-id": "tsx scripts/telegram.ts chat-id",
     "telegram:test": "tsx scripts/telegram.ts test",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:db": "vitest run --config vitest.db.config.mts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",

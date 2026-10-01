@@ -10,6 +10,7 @@ const ACTION_LABEL: Record<string, { label: string; tone: string }> = {
   login: { label: 'เข้าสู่ระบบ', tone: 'indigo' },
   login_failed: { label: 'เข้าสู่ระบบไม่สำเร็จ', tone: 'rose' },
   login_blocked: { label: 'ถูกพักการเข้าสู่ระบบ', tone: 'rose' },
+  force_logout: { label: 'บังคับออกจากระบบ', tone: 'rose' },
   logout: { label: 'ออกจากระบบ', tone: 'slate' },
   session_expired: { label: 'หมดเวลาการใช้งาน', tone: 'slate' },
   view: { label: 'เปิดดูข้อมูล', tone: 'sky' },
@@ -39,6 +40,7 @@ const PATH_LABEL: Record<string, string> = {
   '/api/referral/report': 'ข้อมูลการส่งต่อ (Refer)',
   '/api/admin/audit': 'ประวัติการใช้งาน',
   '/api/admin/feedback': 'แจ้งปัญหา / ข้อเสนอแนะ',
+  '/api/admin/users': 'ผู้ใช้งานระบบ',
   '/api/feedback/mine': 'เรื่องที่แจ้ง',
   '/api/admin/cache': 'สถานะข้อมูล',
 };

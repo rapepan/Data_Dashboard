@@ -20,6 +20,7 @@ import { feedbackRoutes } from './feedback.routes';
 import { clientErrorRoutes } from './client-error.routes';
 import { currentUser, isBackgroundRequest, optionalAuth, requirePage } from '../middleware/auth';
 import { auditLog, GUEST_NAME } from '../auth/audit-log';
+import { presence } from '../auth/presence';
 import type { PageKey } from '../auth/roles';
 import { cleanIp, logger } from '../utils/logger';
 
@@ -28,6 +29,7 @@ const ADMIN_PAGE_LABEL: Record<string, string> = {
   '/api/admin/audit': 'ประวัติการใช้งาน',
   '/api/admin/feedback': 'แจ้งปัญหา / ข้อเสนอแนะ',
   '/api/admin/cache': 'สถานะข้อมูลพักไว้',
+  '/api/admin/users': 'ผู้ใช้งานระบบ',
 };
 
 /** route กลุ่มนี้เปิดได้เฉพาะผู้ที่มีสิทธิ์ดูหน้า `page` */
@@ -52,11 +54,13 @@ function guarded(page: PageKey, routes: FastifyPluginAsync): FastifyPluginAsync 
 
 export async function registerRoutes(fastify: FastifyInstance) {
   await fastify.register(healthRoutes);
-
-  // ทุก route: ระบุตัวผู้ใช้ถ้า login อยู่ ไม่ login ก็ใช้ได้ในฐานะผู้เยี่ยมชม
-  // (ว่าผู้เยี่ยมชมดูอะไรได้บ้าง กำหนดที่ GUEST_ACCESS ใน auth/roles.ts)
   await fastify.register(async app => {
     app.addHook('preHandler', optionalAuth);
+    app.addHook('preHandler', async req => {
+      const user = currentUser(req);
+      if (user) presence.touch(user, req.ip, isBackgroundRequest(req));
+      else presence.touchGuest(req.ip);
+    });
 
     // บันทึกการเปิดดูข้อมูล — ทั้งผู้ที่ login และผู้เยี่ยมชม (guest + IP) ยกเว้น auto-refresh เบื้องหลัง และ /auth/*
     app.addHook('onResponse', async (req, reply) => {

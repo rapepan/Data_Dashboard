@@ -67,6 +67,8 @@ export const FEEDBACK_CHANGED_EVENT = 'feedback:changed';
 
 export interface FeedbackSummary {
   newCount: number;
+  /** เวลาของเรื่องล่าสุดที่ผู้ดูแลคนนี้เคยกดดูกระดิ่ง (เก็บฝั่ง server — ทุกเครื่องตรงกัน) */
+  seenAt: string;
   latest: (Pick<FeedbackEntry, 'id' | 'time' | 'category' | 'page' | 'name' | 'message'> & { imageCount?: number })[];
 }
 
@@ -77,6 +79,7 @@ export const feedbackService = {
     apiGet<{ entries: FeedbackEntry[]; counts: Record<FeedbackStatus | 'all', number> }>('/admin/feedback', { params: status ? { status } : undefined }),
   /** เรียกแบบเบื้องหลัง (silent): ไม่มี spinner ไม่ต่ออายุ session */
   summary: () => apiGet<FeedbackSummary>('/admin/feedback/summary', { silent: true }),
+  bellSeen: (time: string) => apiPost<{ ok: true }>('/admin/feedback/summary/seen', { time }, { silent: true }),
   setStatus: (id: string, status: FeedbackStatus, note?: string) => apiPut<FeedbackEntry>(`/admin/feedback/${id}/status`, { status, note }),
   /* ผู้แจ้ง */
   mine: () => apiGet<{ entries: FeedbackEntry[]; unread: number }>('/feedback/mine'),

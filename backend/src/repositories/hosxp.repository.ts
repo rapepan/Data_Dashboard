@@ -129,6 +129,17 @@ export const hosxpRepository = {
     return md5(password) === row.passweb.trim().toLowerCase() ? toInfo(row) : null;
   },
 
+  /** ชื่อ/กลุ่ม/ตำแหน่งของหลายบัญชี (อ่านอย่างเดียว) — ใช้เติมชื่อในหน้า "ผู้ใช้งานระบบ" ให้คนที่เคย login ก่อนมีหน้านี้ */
+  async findOpdusers(loginnames: string[]): Promise<OpduserInfo[]> {
+    if (loginnames.length === 0) return [];
+    const rows = await timedQuery<OpduserRow[]>(
+      'opduser · ชื่อผู้ใช้หลายคน',
+      'SELECT loginname, name, groupname, department, entryposition FROM opduser WHERE loginname IN (?)',
+      [loginnames],
+    );
+    return rows.map(toInfo);
+  },
+
   async findActiveOpduser(loginname: string): Promise<OpduserInfo | null> {
     const rows = await timedQuery<OpduserRow[]>(
       'opduser · หาผู้ใช้',

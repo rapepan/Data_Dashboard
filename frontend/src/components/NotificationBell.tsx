@@ -1,13 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { FEEDBACK_CATEGORY } from '../services/feedbackService';
+import { FEEDBACK_CATEGORY, feedbackService } from '../services/feedbackService';
 import { useFeedbackSummary } from '../hooks/useFeedbackSummary';
-
-const SEEN_KEY = 'feedback-bell-seen';
-
-function readSeen() {
-  try { return localStorage.getItem(SEEN_KEY) ?? ''; } catch { return ''; }
-}
 
 function timeAgo(iso: string) {
   const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
@@ -23,7 +17,8 @@ export default function NotificationBell() {
   const summary = useFeedbackSummary(true);
   // เปิดค้างอยู่ที่หน้าไหน — เปลี่ยนหน้าแล้ว dropdown ปิดเอง
   const [openAt, setOpenAt] = useState<string | null>(null);
-  const [seen, setSeen] = useState(readSeen);
+  // กดดูแล้วหยุดสั่นทันที (ไม่รอรอบตรวจถัดไป) — ค่าจริงเก็บฝั่ง server ใช้เครื่องไหนก็ตรงกัน
+  const [justSeen, setJustSeen] = useState('');
   const boxRef = useRef<HTMLDivElement>(null);
   const { pathname } = useLocation();
   const open = openAt === pathname;
@@ -43,13 +38,14 @@ export default function NotificationBell() {
 
   const count = summary?.newCount ?? 0;
   const newestTime = summary?.latest[0]?.time ?? '';
+  const seen = [summary?.seenAt ?? '', justSeen].sort().pop() ?? '';
   const hasUnseen = count > 0 && newestTime > seen;
 
   const toggle = () => {
     setOpenAt(open ? null : pathname);
     if (!open && newestTime) {
-      setSeen(newestTime);
-      try { localStorage.setItem(SEEN_KEY, newestTime); } catch { /* ไม่มี storage ก็ไม่เป็นไร */ }
+      setJustSeen(newestTime);
+      feedbackService.bellSeen(newestTime).catch(() => { /* บันทึกไม่ได้ — รอบหน้าจะสั่นอีกครั้ง ไม่เสียหาย */ });
     }
   };
 

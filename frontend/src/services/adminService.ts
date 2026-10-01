@@ -36,3 +36,31 @@ export const adminService = {
       params: Object.fromEntries(Object.entries({ ...params, limit: String(params.limit) }).filter(([, v]) => v)) as Record<string, string>,
     }),
 };
+
+export type PresenceStatus = 'active' | 'idle' | 'offline';
+
+export interface SystemUser {
+  loginname: string;
+  name: string;
+  groupname: string;
+  position: string;
+  role: string;
+  status: PresenceStatus;
+  firstLogin: string | null;
+  lastLogin: string | null;
+  loginCount: number;
+  lastActive: string | null;
+  lastSeen: string | null;
+  lastIp: string | null;
+}
+
+export interface SystemUsers {
+  users: SystemUser[];
+  counts: { active: number; idle: number; offline: number; today: number; total: number; guestsOnline: number; guestsToday: number | null };
+  thresholds: { activeMinutes: number; offlineMinutes: number };
+}
+
+/** ผู้ใช้ที่เคย login + สถานะออนไลน์ — silent = รอบอัปเดตอัตโนมัติ (ไม่ต่ออายุ session / ไม่บันทึกประวัติ) */
+export const fetchSystemUsers = (silent = false) => apiGet<SystemUsers>('/admin/users', { silent });
+/** บังคับออกจากระบบ — ทุกเครื่องของคนนั้นหลุดภายใน 1 นาที */
+export const forceLogoutUser = (loginname: string) => apiPost<{ ok: true }>(`/admin/users/${encodeURIComponent(loginname)}/logout`);

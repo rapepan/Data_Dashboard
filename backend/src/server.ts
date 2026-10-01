@@ -2,6 +2,7 @@ import './env';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from './app';
 import { SESSION_IDLE_MINUTES } from './middleware/auth';
+import { loginThrottle } from './auth/auth.service';
 import { hosxpRepository } from './repositories/hosxp.repository';
 import { AUDIT_KEEP_DAYS, auditLog } from './auth/audit-log';
 import { feedbackStore } from './feedback/feedback-store';
@@ -10,12 +11,34 @@ import { dataUsage, monitor } from './utils/monitor';
 import { notifyService } from './services/notify.service';
 import { prewarm } from './cache/prewarm';
 import { CACHE_CONFIG, reportCache } from './cache/report-cache';
+import { appDb } from './repositories/app-db';
+import { importLegacyFiles } from './repositories/app-db-migrate';
+import { presence } from './auth/presence';
+import { sessionRevocation } from './auth/session-revocation';
 
 const REPORT_DATA_SOURCE: 'mock' | 'hosxp' = 'mock';
 
 let app: FastifyInstance | null = null;
 
-async function printStartupSummary(host: string, port: number, restoredCache: number) {
+/**
+ * ฐาน data_dashboard: สร้างตารางที่ยังไม่มี + นำข้อมูลจากไฟล์เดิมเข้าครั้งแรก — คืนข้อความสถานะสำหรับสรุปตอนเริ่ม
+ * ต่อไม่ได้ก็เปิดเซิร์ฟเวอร์ต่อ (หน้ารายงานใช้ได้ปกติ ส่วนแจ้งปัญหา/ประวัติการใช้งานจะแจ้ง error จนกว่าฐานกลับมา)
+ */
+async function prepareAppDb(): Promise<string> {
+  if (!appDb.isConfigured()) return color.gray('ไม่ได้ตั้งค่า (DASHBOARD_DB_*) — เก็บเป็นไฟล์ใน backend/data');
+  try {
+    await appDb.ensureSchema();
+    const imported = await importLegacyFiles();
+    const total = imported.feedback + imported.audit + imported.archive;
+    if (total) logger.info(`[db] นำข้อมูลจากไฟล์เดิมเข้าฐานแล้ว: แจ้งปัญหา ${imported.feedback} เรื่อง ${color.gray('·')} ประวัติการใช้งาน ${imported.audit.toLocaleString()} รายการ ${color.gray('·')} คลัง ${imported.archive.toLocaleString()} รายการ (ไฟล์เดิมเปลี่ยนชื่อเป็น .imported)`);
+    await auditLog.flushPending();
+    return color.green(`✔ เชื่อมต่อได้ (${appDb.target()})`);
+  } catch (error) {
+    return color.red(`✖ เชื่อมต่อไม่ได้ (${appDb.target()}) — ${(error as Error).message}`);
+  }
+}
+
+async function printStartupSummary(host: string, port: number, restoredCache: number, appDbStatus: string) {
   let hosxp: string;
   if (!hosxpRepository.isConfigured()) {
     hosxp = color.yellow('✖ ยังไม่ได้ตั้งค่า (HOSXP_* ใน backend/.env) — login ไม่ได้');
@@ -29,9 +52,10 @@ async function printStartupSummary(host: string, port: number, restoredCache: nu
     }
   }
 
-  const pending = feedbackStore.list('new').length;
-  const audit = auditLog.stats();
   const dot = color.gray('·');
+  // ฐานล่มตอนเริ่ม ก็ยังพิมพ์สรุปได้ (แสดงว่าอ่านไม่ได้)
+  const pending = await feedbackStore.list('new').then(list => list.length).catch(() => null);
+  const audit = await auditLog.stats().catch(() => null);
   logger.info('');
   printBlock(`พร้อมใช้งาน ➜ http://${host}:${port}/api`, [
     ['HOSxP', hosxp],
@@ -39,8 +63,9 @@ async function printStartupSummary(host: string, port: number, restoredCache: nu
     ['Session', `หมดอายุเมื่อไม่ใช้งาน ${SESSION_IDLE_MINUTES} นาที`],
     ['เตรียมข้อมูล', `ทุก ${CACHE_CONFIG.prewarmMinutes} นาที ${dot} ใช้ผลที่พักไว้ ${CACHE_CONFIG.ttlTodayMinutes} นาที (อดีต ${CACHE_CONFIG.ttlPastHours} ชม.) ${dot} query พร้อมกันสูงสุด ${CACHE_CONFIG.maxConcurrent} ${dot} ${restoredCache ? color.green(`โหลดจากไฟล์ ${restoredCache} ชุด`) : 'เริ่มใหม่'}`],
     ['แจ้งเตือนมือถือ', notifyService.isConfigured() ? color.green(`✔ Telegram (${notifyService.targetCount()} ปลายทาง)`) : color.gray('ยังไม่ได้ตั้งค่า (TELEGRAM_* ใน backend/.env)')],
-    ['แจ้งปัญหาค้าง', pending ? color.yellow(`${pending} เรื่อง`) : color.green('ไม่มี')],
-    ['ประวัติการใช้งาน', `${audit.entries.toLocaleString()} รายการ ${dot} เก็บในไฟล์หลัก ${AUDIT_KEEP_DAYS} วัน เก่ากว่านั้นย้ายเข้าคลัง`],
+    ['ฐานข้อมูลระบบ', appDbStatus],
+    ['แจ้งปัญหาค้าง', pending === null ? color.red('อ่านไม่ได้') : pending ? color.yellow(`${pending} เรื่อง`) : color.green('ไม่มี')],
+    ['ประวัติการใช้งาน', audit === null ? color.red('อ่านไม่ได้') : `${audit.entries.toLocaleString()} รายการ ${dot} เก็บ ${AUDIT_KEEP_DAYS} วัน เก่ากว่านั้นย้ายเข้าคลัง`],
     ['พื้นที่ข้อมูล', dataUsage().text],
     ['เตือนเมื่อ', monitor.limitsText()],
   ]);
@@ -53,24 +78,41 @@ async function bootstrap() {
   const host = process.env.HOST || '127.0.0.1';
   await app.listen({ port, host });
   const restored = prewarm.start();
-  await printStartupSummary(host, port, restored);
+  const appDbStatus = await prepareAppDb();
+  await printStartupSummary(host, port, restored, appDbStatus);
+  // ประวัติการใช้งานที่พักไว้ตอนฐานล่ม — ส่งเข้าฐานเมื่อกลับมา
+  setInterval(() => { auditLog.flushPending().catch(() => undefined); }, 2 * 60_000).unref();
+  // หน้า "ผู้ใช้งานระบบ": ครั้งแรกสร้างรายชื่อจากประวัติการใช้งาน · บันทึกสถานะออนไลน์ทุก 1 นาที
+  // รายชื่อที่ถูกบังคับออกจากระบบ — ต้องโหลดก่อน ไม่งั้นบัตรเก่ากลับมาใช้ได้หลังรีสตาร์ท
+  await sessionRevocation.load().catch(error => logger.warn(`[auth] โหลดรายการบังคับออกจากระบบไม่ได้ — ${(error as Error).message}`));
+  presence.backfill()
+    .then(n => { if (n) logger.info(`[presence] สร้างรายชื่อผู้ใช้งานจากประวัติการใช้งานแล้ว ${n} คน`); })
+    .catch(error => logger.warn(`[presence] สร้างรายชื่อผู้ใช้งานไม่สำเร็จ — ${(error as Error).message}`));
+  setInterval(() => { presence.flush().catch(() => undefined); }, 60_000).unref();
   hosxpRepository.startHealthCheck();
   // รูปแนบของเรื่องที่ดำเนินการแล้วครบ 90 วัน ลบทิ้ง (ข้อความของเรื่องยังเก็บไว้)
-  const purgeImages = () => {
-    const purged = feedbackStore.purgeOldImages();
-    if (purged) logger.info(`[feedback] ลบรูปแนบที่ครบกำหนดเก็บ ${purged} เรื่อง`);
-  };
-  // ประวัติการใช้งานเก่ากว่า AUDIT_KEEP_DAYS ย้ายเข้าคลังรายเดือน (ไม่ลบ) — ไฟล์หลักไม่โตเรื่อย ๆ
-  const archiveAudit = () => {
+  const purgeImages = async () => {
     try {
-      const moved = auditLog.archiveOld();
-      if (moved) logger.info(`[audit] ย้ายประวัติการใช้งานที่เก่ากว่า ${AUDIT_KEEP_DAYS} วันเข้าคลัง ${moved.toLocaleString()} รายการ (data/audit-archive)`);
+      const purged = await feedbackStore.purgeOldImages();
+      if (purged) logger.info(`[feedback] ลบรูปแนบที่ครบกำหนดเก็บ ${purged} เรื่อง`);
+    } catch (error) {
+      logger.warn(`[feedback] ลบรูปแนบตามกำหนดไม่สำเร็จ — ${(error as Error).message}`);
+    }
+  };
+  // ประวัติการใช้งานเก่ากว่า AUDIT_KEEP_DAYS ย้ายเข้าคลัง (ไม่ลบ) — ส่วนหลักไม่โตเรื่อย ๆ
+  const archiveAudit = async () => {
+    try {
+      const moved = await auditLog.archiveOld();
+      if (moved) logger.info(`[audit] ย้ายประวัติการใช้งานที่เก่ากว่า ${AUDIT_KEEP_DAYS} วันเข้าคลัง ${moved.toLocaleString()} รายการ (${appDb.isConfigured() ? 'ตาราง audit_log_archive' : 'data/audit-archive'})`);
     } catch (error) {
       logger.warn(`[audit] ย้ายประวัติเข้าคลังไม่สำเร็จ — ${(error as Error).message}`);
     }
   };
-  setTimeout(() => { purgeImages(); archiveAudit(); }, 30_000).unref();
-  setInterval(() => { purgeImages(); archiveAudit(); }, 24 * 3_600_000).unref();
+  // login ผิดที่หมดอายุแล้ว (ใช้นับแค่ 5 นาที) ลบทิ้ง ตารางจะได้ไม่โต
+  const cleanupLoginFailures = () => loginThrottle.cleanup().catch(() => 0);
+  const daily = () => { void purgeImages().then(archiveAudit).then(cleanupLoginFailures); };
+  setTimeout(daily, 30_000).unref();
+  setInterval(daily, 24 * 3_600_000).unref();
   logger.addHourlyPart(() => {
     const rate = reportCache.hitRate();
     return ['ข้อมูลพักไว้', rate === null ? null : `ใช้ผลที่พักไว้ ${rate}%`];
@@ -102,7 +144,9 @@ async function shutdown(signal: string) {
     await app?.close();
     prewarm.stop();
     await hosxpRepository.close();
-    logger.info(color.gray('ปิดเซิร์ฟเวอร์และการเชื่อมต่อ HOSxP แล้ว'));
+    await presence.flush().catch(() => undefined);
+    await appDb.close();
+    logger.info(color.gray('ปิดเซิร์ฟเวอร์และการเชื่อมต่อฐานข้อมูลแล้ว'));
     process.exit(0);
   } catch (error) {
     logger.error('ปิดเซิร์ฟเวอร์ไม่สมบูรณ์', error);

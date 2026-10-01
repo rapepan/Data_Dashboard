@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AuthUnavailableError, loginThrottle, verifyLogin } from '../auth/auth.service';
 import { auditLog } from '../auth/audit-log';
+import { presence } from '../auth/presence';
 import { allowedPages, canExport, canViewPage, canViewRevenueDetail, ROLE_LABEL, type PageKey, type SessionUser } from '../auth/roles';
 import { clearSession, currentUser, issueSession, recordDenied, SESSION_IDLE_MINUTES } from '../middleware/auth';
 import { cleanIp, logger } from '../utils/logger';
@@ -37,8 +38,7 @@ export const authController = {
       return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน' });
     }
 
-    const throttleKey = `${loginname}|${req.ip}`;
-    if (loginThrottle.isBlocked(throttleKey)) {
+    if (await loginThrottle.isBlocked(loginname, req.ip)) {
       logger.tally('loginFailed');
       logger.auth(false, `${loginname} ถูกพักการ login 5 นาที (ผิดหลายครั้ง) · ${cleanIp(req.ip)}`);
       auditLog.write({ loginname, action: 'login_blocked', detail: 'กรอกรหัสผ่านผิดหลายครั้ง — พัก 5 นาที', ip: req.ip });
@@ -56,15 +56,16 @@ export const authController = {
     }
 
     if (!user) {
-      loginThrottle.fail(throttleKey);
+      await loginThrottle.fail(loginname, req.ip);
       auditLog.write({ loginname, action: 'login_failed', ip: req.ip });
       logger.tally('loginFailed');
       logger.auth(false, `login ไม่สำเร็จ: ${loginname} · ${cleanIp(req.ip)}`);
       return reply.status(401).send({ statusCode: 401, error: 'Unauthorized', message: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' });
     }
 
-    loginThrottle.reset(throttleKey);
+    await loginThrottle.reset(loginname, req.ip);
     await issueSession(reply, user);
+    await presence.login(user, req.ip).catch(error => logger.warn(`[presence] บันทึกการ login ไม่ได้ — ${(error as Error).message}`));
     auditLog.write({ loginname: user.loginname, action: 'login', ip: req.ip });
     logger.tally('logins');
     logger.auth(true, `${user.loginname} เข้าสู่ระบบ (${ROLE_LABEL[user.role]}) · ${cleanIp(req.ip)}`);
@@ -77,6 +78,7 @@ export const authController = {
     const user = currentUser(req);
     if (user) {
       auditLog.write({ loginname: user.loginname, action: 'logout', ip: req.ip });
+      void presence.offline(user.loginname).catch(() => undefined);
       logger.auth(true, `${user.loginname} ออกจากระบบ`);
     }
     return describe(null);

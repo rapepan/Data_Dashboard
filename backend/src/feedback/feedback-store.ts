@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } fr
 import * as path from 'node:path';
 import { DATA_DIR } from '../utils/paths';
 import { feedbackImages, IMAGE_RETENTION_DAYS, type FeedbackImage } from './feedback-images';
+import { appDb } from '../repositories/app-db';
+import { dbFeedbackStore } from './feedback-db';
 
 const FILE = path.join(DATA_DIR, 'feedback.jsonl');
 
@@ -61,15 +63,24 @@ function writeAll(entries: FeedbackEntry[]) {
   writeFileSync(FILE, entries.map(e => JSON.stringify(e)).join('\n') + (entries.length ? '\n' : ''), 'utf8');
 }
 
-function readAll(): FeedbackEntry[] {
+/** ไฟล์ข้อมูลแบบเดิม — ใช้เมื่อไม่ได้ตั้งค่าฐานข้อมูล และใช้นำเข้าฐานครั้งแรก */
+export const FEEDBACK_FILE = FILE;
+
+/** อ่านไฟล์ทั้งหมด — ข้ามบรรทัดที่เสีย */
+export function readFeedbackFile(): FeedbackEntry[] {
   if (!existsSync(FILE)) return [];
-  return readFileSync(FILE, 'utf8')
-    .split('\n')
-    .filter(Boolean)
-    .map(line => JSON.parse(line) as FeedbackEntry);
+  const entries: FeedbackEntry[] = [];
+  for (const line of readFileSync(FILE, 'utf8').split('\n')) {
+    if (!line) continue;
+    try { entries.push(JSON.parse(line) as FeedbackEntry); } catch { /* ข้ามบรรทัดเสีย */ }
+  }
+  return entries;
 }
 
-export const feedbackStore = {
+const readAll = readFeedbackFile;
+
+/** เก็บเป็นไฟล์ backend/data/feedback.jsonl */
+const fileStore = {
   add(entry: Omit<FeedbackEntry, 'id' | 'time' | 'status'>): FeedbackEntry {
     mkdirSync(DATA_DIR, { recursive: true });
     const saved: FeedbackEntry = { id: randomUUID().slice(0, 8), time: new Date().toISOString(), status: 'new', ...entry };
@@ -149,5 +160,39 @@ export const feedbackStore = {
     }
     if (purged) writeAll(entries);
     return purged;
+  },
+};
+
+/**
+ * จุดเดียวที่โค้ดส่วนอื่นเรียกใช้ — ตั้งค่า DASHBOARD_DB_* แล้วเก็บในฐาน data_dashboard ไม่ตั้ง = เก็บเป็นไฟล์
+ * (เลือกตอนเรียกแต่ละครั้ง ชุดทดสอบจึงสลับได้)
+ */
+const store = () => (appDb.isConfigured() ? dbFeedbackStore : fileStore);
+
+export const feedbackStore = {
+  async add(entry: Omit<FeedbackEntry, 'id' | 'time' | 'status'>): Promise<FeedbackEntry> {
+    return store().add(entry);
+  },
+  /** รายการล่าสุดก่อน */
+  async list(status?: FeedbackStatus): Promise<FeedbackEntry[]> {
+    return store().list(status);
+  },
+  async setStatus(id: string, status: FeedbackStatus, by: { loginname: string; name?: string }, note?: string): Promise<FeedbackEntry | null> {
+    return store().setStatus(id, status, by, note);
+  },
+  async listByReporter(loginname: string): Promise<FeedbackEntry[]> {
+    return store().listByReporter(loginname);
+  },
+  async markSeenByReporter(loginname: string): Promise<void> {
+    await store().markSeenByReporter(loginname);
+  },
+  async setLineQr(id: string, lineQr: FeedbackImage): Promise<void> {
+    await store().setLineQr(id, lineQr);
+  },
+  async setImages(id: string, images: FeedbackImage[]): Promise<void> {
+    await store().setImages(id, images);
+  },
+  async purgeOldImages(): Promise<number> {
+    return store().purgeOldImages();
   },
 };

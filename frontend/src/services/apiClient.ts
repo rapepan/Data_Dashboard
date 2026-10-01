@@ -65,7 +65,10 @@ async function send<T>(method: string, path: string, body: unknown, { params, si
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   }).then(async res => {
     // backend ส่ง header นี้เมื่อ cookie login ที่ส่งไปหมดอายุแล้ว (request ยังสำเร็จในฐานะผู้เยี่ยมชม)
-    if (res.headers.get('X-Session-Expired') === '1') window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+    // X-Session-Revoked = ผู้ดูแลระบบบังคับออกจากระบบ (detail บอกหน้าเว็บให้แจ้งข้อความต่างจากหมดเวลา)
+    if (res.headers.get('X-Session-Expired') === '1') {
+      window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT, { detail: res.headers.get('X-Session-Revoked') === '1' ? 'revoked' : 'expired' }));
+    }
     const data = await res.json().catch(() => null);
     if (!res.ok) {
       // 502–504 = proxy ต่อ backend ไม่ได้ (backend ไม่ได้รัน/ล่ม) — ไม่มีข้อความจาก backend ให้ใช้

@@ -6,6 +6,8 @@ import { resolveSessionUser } from '../auth/auth.service';
 import { canViewPage, type PageKey, type SessionUser } from '../auth/roles';
 import { cleanIp, logger } from '../utils/logger';
 import { auditLog, GUEST_NAME } from '../auth/audit-log';
+import { presence } from '../auth/presence';
+import { sessionRevocation } from '../auth/session-revocation';
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
@@ -55,10 +57,6 @@ export function currentUser(request: FastifyRequest): SessionUser | null {
   return (request.user as SessionUser | undefined) ?? null;
 }
 
-/**
- * cookie ที่หมดอายุเพราะไม่ได้ใช้งาน → เจ้าของคือใคร (ตรวจลายเซ็นจริง ไม่เชื่อชื่อใน token ที่ถูกแก้)
- * คืน null ถ้า token ปลอม/เสีย หรือยังไม่หมดอายุ
- */
 function expiredSessionOwner(token: string): string | null {
   const [head, body, signature] = token.split('.');
   if (!head || !body || !signature) return null;
@@ -82,6 +80,7 @@ function recordSessionExpired(request: FastifyRequest, token: string) {
   for (const [k, t] of expiredSeen) if (now - t > 10 * 60 * 1000) expiredSeen.delete(k);
   if (expiredSeen.has(key)) return;
   expiredSeen.set(key, now);
+  void presence.offline(owner).catch(() => undefined);
   auditLog.write({ loginname: owner, action: 'session_expired', detail: `ไม่ได้ใช้งานเกิน ${SESSION_IDLE_MINUTES} นาที`, ip: request.ip });
   logger.auth(false, `${owner} session หมดอายุ (ไม่ได้ใช้งานเกิน ${SESSION_IDLE_MINUTES} นาที) · ${cleanIp(request.ip)}`);
 }
@@ -100,7 +99,16 @@ export async function optionalAuth(request: FastifyRequest, reply: FastifyReply)
 
   let user: SessionUser | undefined;
   try {
-    const payload = await request.jwtVerify<{ sub: string; name?: string; group?: string; pos?: string }>({ onlyCookie: true });
+    const payload = await request.jwtVerify<{ sub: string; name?: string; group?: string; pos?: string; iat?: number }>({ onlyCookie: true });
+    // ผู้ดูแลกด "บังคับออกจากระบบ" หลังบัตรนี้ออก → ใช้ไม่ได้ (หน้าเว็บแจ้งผู้ใช้ แล้วกลับเป็นผู้เยี่ยมชม)
+    if (sessionRevocation.isRevoked(payload.sub, payload.iat)) {
+      // jwtVerify ใส่ request.user ให้เองเมื่อบัตรถูกต้อง — ต้องล้างออก ไม่งั้นยังนับว่า login อยู่
+      request.user = undefined as unknown as typeof request.user;
+      clearSession(reply);
+      reply.header('X-Session-Expired', '1');
+      reply.header('X-Session-Revoked', '1');
+      return;
+    }
     // บทบาทคำนวณใหม่ทุก request — ผู้ดูแลระบบเปลี่ยนบทบาทแล้วมีผลทันที
     if (payload.name !== undefined) user = resolveSessionUser({ loginname: payload.sub, name: payload.name, groupname: payload.group ?? '', position: payload.pos ?? '' });
   } catch {

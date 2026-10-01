@@ -7,7 +7,7 @@ interface DrugPickerProps {
   onChange: (drug: DrugCatalogItem | null) => void;
 }
 
-const TYPE_LABEL = { herb: 'สมุนไพร', common: 'สามัญ' };
+const TYPE_LABEL = { modern: 'สามัญ', thai: 'สมุนไพร', inhouse: 'ผลิตใช้เอง' };
 
 /** ช่องค้นหา + เลือกรายการยา (พิมพ์รหัสหรือชื่อยา) */
 export default function DrugPicker({ catalog, value, onChange }: DrugPickerProps) {
@@ -55,6 +55,7 @@ export default function DrugPicker({ catalog, value, onChange }: DrugPickerProps
                 <code>{drug.code}</code>
                 <span>{drug.name}</span>
                 <small className={`type-${drug.type}`}>{TYPE_LABEL[drug.type]}</small>
+                {!drug.ed && <small className="type-ned" title="นอกบัญชียาหลักแห่งชาติ">นอกบัญชี</small>}
               </button>
             </li>
           ))}

@@ -6,7 +6,8 @@ import TopLimitSelect from './TopLimitSelect';
 type SortKey = 'qty' | 'value';
 
 interface DrugTableProps {
-  items: DrugItem[];
+  /** ed = ในบัญชียาหลักแห่งชาติ — มีค่านี้แล้วแสดงคอลัมน์ บัญชียา */
+  items: (DrugItem & { ed?: boolean })[];
   nameLabel: string;
   searchPlaceholder: string;
   /** สีตัวเลขจำนวนชิ้น */
@@ -21,6 +22,8 @@ export default function DrugTable({ items, nameLabel, searchPlaceholder, accent 
   const [limit, setLimit] = useState(10);
   const [query, setQuery] = useState('');
   const hasUnit = items.some(item => item.unit);
+  const hasEd = items.some(item => item.ed !== undefined);
+  const columns = 5 + (hasUnit ? 1 : 0) + (hasEd ? 1 : 0);
 
   const rows = useMemo(() => {
     // อันดับคิดจากทั้งหมดตามเกณฑ์ที่เลือก แล้วค่อยกรองคำค้น — อันดับไม่เปลี่ยนตามคำค้น
@@ -41,7 +44,7 @@ export default function DrugTable({ items, nameLabel, searchPlaceholder, accent 
       </div>
       <table className="report-table rank-list">
         <thead>
-          <tr><th className="center">อันดับ</th><th>รหัสยา</th><th>{nameLabel}</th>{hasUnit && <th className="center">หน่วยนับ</th>}<th className="num">จำนวน (ชิ้น)</th><th className="num">มูลค่ารวม (บาท)</th></tr>
+          <tr><th className="center">อันดับ</th><th>รหัสยา</th><th>{nameLabel}</th>{hasEd && <th className="center">บัญชียา</th>}{hasUnit && <th className="center">หน่วยนับ</th>}<th className="num">จำนวน (ชิ้น)</th><th className="num">มูลค่ารวม (บาท)</th></tr>
         </thead>
         <tbody>
           {rows.map(row => (
@@ -49,12 +52,13 @@ export default function DrugTable({ items, nameLabel, searchPlaceholder, accent 
               <td className="center"><span className={`rank rank-${Math.min(row.rank, 4)}`}>{row.rank}</span></td>
               <td><code className="rank-code">{row.code}</code></td>
               <td>{row.name}</td>
+              {hasEd && <td className="center"><span className={`ed-badge${row.ed ? '' : ' ned'}`} data-x={row.ed ? 'ในบัญชี' : 'นอกบัญชี'}>{row.ed ? 'ในบัญชี' : 'นอกบัญชี'}</span></td>}
               {hasUnit && <td className="center muted">{row.unit}</td>}
               <td className={`num${sort === 'qty' ? ' emphasis' : ''}`}>{formatNumber(row.qty)}</td>
               <td className={`num${sort === 'value' ? ' emphasis' : ''}`}>{money.format(row.value)} ฿</td>
             </tr>
           ))}
-          {rows.length === 0 && <tr><td colSpan={hasUnit ? 6 : 5} className="empty">ไม่พบรายการยาที่ค้นหา</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={columns} className="empty">ไม่พบรายการยาที่ค้นหา</td></tr>}
         </tbody>
       </table>
     </div>
