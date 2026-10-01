@@ -1,0 +1,11 @@
+# ไลบรารีที่ติดตั้งด้วย npm — ติดตั้งใหม่ได้ด้วย npm run install:all
+node_modules/
+
+# รหัสผ่าน / token — ห้ามขึ้น git
+.env
+.env.*
+!.env.example
+
+# log และไฟล์ของ editor
+*.log
+.DS_Store

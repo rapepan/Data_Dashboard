@@ -1,0 +1,16 @@
+{
+  "name": "bsth-dashboard-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "description": "DATA BSTH - รัน Backend และ Frontend พร้อมกันในเทอร์มินัลเดียว",
+  "scripts": {
+    "dev": "concurrently --names Backend,Frontend --prefix \"[{time}] {name}\" --timestamp-format HH:mm:ss --pad-prefix --prefix-colors cyan.bold,green.bold \"npm run dev --silent --prefix backend\" \"npm run dev --silent --prefix frontend\"",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "install:all": "npm install --prefix backend && npm install --prefix frontend",
+    "test": "npm test --prefix backend && npm test --prefix frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

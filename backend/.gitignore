@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.env
+data/
+# QR Code LINE ส่วนตัวของผู้พัฒนา — ไม่เก็บใน git (วางไฟล์เองที่เครื่อง server)
+assets/line-qr.jpg
