@@ -99,3 +99,12 @@ frontend เรียก API ผ่าน proxy ของ Vite (`/api` → `http
 - ประวัติการใช้งานเก็บที่ `backend/data/audit-log.jsonl` (สร้างอัตโนมัติ ไม่อยู่ใน git)
 - ไม่ได้ใช้งานเกิน `SESSION_IDLE_MINUTES` (30 นาที) ระบบจะกลับเป็นผู้เยี่ยมชมอัตโนมัติ — auto-refresh เบื้องหลังไม่นับเป็นการใช้งาน
 - บนเครื่องจริงต้องตั้ง `AUTH_SECRET` เป็นค่าสุ่มยาว ๆ และ `COOKIE_SECURE=true` เมื่อเปิดผ่าน https
+
+## ผู้พัฒนา
+
+| Field  | Details                                                |
+| ------ | ------------------------------------------------------- |
+| Role      | Full-stack Developer                                     |
+| Email     | [rapepan23.rpp@gmail.com](mailto:rapepan23.rpp@gmail.com) |
+| GitHub    | [@rapepan](https://github.com/rapepan)                    |
+| Portfolio | [portfolio-rapepan.vercel.app](https://portfolio-rapepan.vercel.app/) |
