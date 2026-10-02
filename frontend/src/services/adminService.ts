@@ -64,3 +64,26 @@ export interface SystemUsers {
 export const fetchSystemUsers = (silent = false) => apiGet<SystemUsers>('/admin/users', { silent });
 /** บังคับออกจากระบบ — ทุกเครื่องของคนนั้นหลุดภายใน 1 นาที */
 export const forceLogoutUser = (loginname: string) => apiPost<{ ok: true }>(`/admin/users/${encodeURIComponent(loginname)}/logout`);
+
+/* ---------- สรุปการใช้งาน ---------- */
+
+export type UsageRange = 7 | 30 | 90;
+
+export interface UsageSummary {
+  days: UsageRange;
+  from: string;
+  to: string;
+  totals: { views: number; guestViews: number; exports: number; logins: number; loginFailed: number; users: number; guests: number };
+  daily: { date: string; views: number; guestViews: number; users: number; guests: number }[];
+  /** 24 ช่อง (00–23 น. เวลาไทย) */
+  hourly: number[];
+  /** 7 ช่อง — 0 = อาทิตย์ */
+  weekday: number[];
+  /** key ตรงกับเมนู (routes/navigation.ts) */
+  pages: { key: string; views: number; users: number; guestViews: number }[];
+  topUsers: { loginname: string; name: string; position: string; views: number; exports: number; last: string }[];
+  recentExports: { time: string; loginname: string; name: string; detail: string }[];
+}
+
+/** สรุปการใช้งานย้อนหลัง 7 / 30 / 90 วัน (คำนวณจากประวัติการใช้งาน) */
+export const fetchUsageSummary = (days: UsageRange) => apiGet<UsageSummary>('/admin/usage', { params: { days: String(days) } });

@@ -16,6 +16,8 @@ export async function buildApp({ logRequests = true } = {}) {
   const app = Fastify({ logger: { level: 'warn' }, trustProxy: ['127.0.0.1', '::1'] });
   if (logRequests) {
     app.addHook('onResponse', async (req, reply) => {
+      // ช่องสัญญาณสดเปิดค้างเป็นชั่วโมง — ไม่พิมพ์ (จำนวนที่ต่ออยู่ดูในสรุปรายชั่วโมง)
+      if (req.url.startsWith('/api/system/events')) return;
       logger.request(req.method, reply.statusCode, req.url, currentUser(req)?.loginname ?? 'guest', cleanIp(req.ip), Math.round(reply.elapsedTime));
     });
   }

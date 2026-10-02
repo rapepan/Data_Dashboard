@@ -1,6 +1,6 @@
 {
   "name": "bsth-ops-backend",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "DATA BSTH - Backend API (Fastify, layered architecture)",
   "license": "UNLICENSED",
@@ -13,7 +13,8 @@
     "telegram:test": "tsx scripts/telegram.ts test",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:db": "vitest run --config vitest.db.config.mts"
+    "test:db": "vitest run --config vitest.db.config.mts",
+    "check:connections": "tsx scripts/check-connections.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",
@@ -28,5 +29,8 @@
     "tsx": "^4.19.2",
     "typescript": "^5.8.3",
     "vitest": "^5.0.3"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

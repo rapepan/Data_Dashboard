@@ -4,8 +4,8 @@ import type { RowDataPacket } from 'mysql2/promise';
 import { appDb } from '../repositories/app-db';
 import { DATA_DIR } from '../utils/paths';
 
-/** feedback_bell_seen = ผู้ดูแลกดดูกระดิ่งถึงเรื่องไหน · sessions_revoked_at = ถูกบังคับออกจากระบบเมื่อไร */
-export type UserSettingName = 'feedback_bell_seen' | 'sessions_revoked_at';
+/** feedback_bell_seen = ผู้ดูแลกดดูกระดิ่งถึงเรื่องไหน · sessions_revoked_at = ถูกบังคับออกจากระบบเมื่อไร · whats_new_seen = ดูหน้าต่าง "มีอะไรใหม่" ของเวอร์ชันไหนแล้ว */
+export type UserSettingName = 'feedback_bell_seen' | 'sessions_revoked_at' | 'whats_new_seen';
 
 const FILE = path.join(DATA_DIR, 'user-settings.json');
 type FileData = Record<string, Partial<Record<UserSettingName, string>>>;

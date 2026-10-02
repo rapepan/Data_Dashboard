@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
+import { useSystemStatus } from '../hooks/useSystemStatus';
+import { formatUntil } from '../components/system/SystemNotices';
 
 /**
  * ตรวจสิทธิ์ดูหน้า — ผู้เยี่ยมชมที่เปิดหน้าที่ต้อง login จะเห็นปุ่มให้เข้าสู่ระบบ
@@ -9,9 +11,36 @@ import { useAuth } from './AuthContext';
 export function PageGuard({ page, children }: { page: string; children: ReactNode }) {
   const { status, user, canView } = useAuth();
   const location = useLocation();
+  const closed = useSystemStatus().status?.pageMaintenance;
+  const pageClosed = Boolean(closed?.pages.includes(page));
 
   if (status === 'loading') return null;
-  if (canView(page)) return <>{children}</>;
+  if (canView(page)) {
+    // ผู้ดูแลปิดปรับปรุงหน้านี้ — ผู้ใช้ทั่วไปเห็นข้อความแจ้งแทน (เมนู/หน้าอื่นยังใช้ได้) · ผู้ดูแลเปิดได้ไว้ตรวจ
+    if (pageClosed && user?.role !== 'admin') {
+      return (
+        <div className="placeholder-card page-maintenance">
+          <div className="placeholder-icon maintenance"><i className="fa-solid fa-screwdriver-wrench" /></div>
+          <h2>หน้านี้กำลังปรับปรุงชั่วคราว</h2>
+          <p>{closed?.message || 'ผู้ดูแลระบบกำลังปรับปรุงข้อมูลหน้านี้ กรุณากลับมาใหม่ภายหลัง — หน้าอื่นยังใช้งานได้ตามปกติ'}</p>
+          {closed?.until && <p className="maintenance-until"><i className="fa-regular fa-clock" /> หน้านี้จะกลับมาใช้งานได้เวลา <b>{formatUntil(closed.until)}</b></p>}
+          <small className="muted"><i className="fa-solid fa-rotate" /> เมื่อเปิดให้ใช้งานแล้ว หน้านี้จะกลับมาเองอัตโนมัติ</small>
+        </div>
+      );
+    }
+    return (
+      <>
+        {pageClosed && (
+          <div className="system-notice level-danger" role="status">
+            <i className="fa-solid fa-screwdriver-wrench" />
+            <span><b>หน้านี้ปิดปรับปรุงอยู่สำหรับผู้ใช้ทั่วไป</b> — ผู้ดูแลระบบยังเปิดดูได้{closed?.until && ` · เปิดกลับเองเวลา ${formatUntil(closed.until)}`}{closed?.message && ` · ${closed.message}`}</span>
+            <Link to="/admin/system">จัดการ</Link>
+          </div>
+        )}
+        {children}
+      </>
+    );
+  }
 
   if (!user) {
     return (

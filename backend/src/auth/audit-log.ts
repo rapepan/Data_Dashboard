@@ -24,6 +24,7 @@ export const AUDIT_ACTIONS = [
   'view', 'export', 'denied',
   'feedback_submit', 'feedback_status',
   'cache_refresh', 'force_logout',
+  'notice_create', 'notice_update', 'notice_delete', 'maintenance_on', 'maintenance_off', 'page_maintenance',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

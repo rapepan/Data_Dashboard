@@ -16,6 +16,9 @@ function getPool(): Pool {
       connectTimeout: 5000,
       charset: process.env.HOSXP_DB_CHARSET || 'utf8mb4',
     });
+    // อ่านอย่างเดียวทุกการเชื่อมต่อ — กันพลาดเขียน/แก้ข้อมูล HOSxP แม้บัญชีที่ใช้จะมีสิทธิ์เขียน
+    (pool as unknown as { pool: { on(event: 'connection', cb: (conn: { query(sql: string): void }) => void): void } })
+      .pool.on('connection', conn => conn.query('SET SESSION TRANSACTION READ ONLY'));
   }
   return pool;
 }

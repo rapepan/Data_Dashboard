@@ -10,6 +10,9 @@ export const DEPARTMENT_PAGES = [
   'tele', 'postal', 'thaimed', 'drugbudget', 'readmit', 'referral',
 ] as const;
 
+/** หน้าที่ผู้ดูแลเลือกปิดปรับปรุงเฉพาะหน้าได้ (ไม่รวมติดต่อผู้พัฒนา / เรื่องที่แจ้ง / ผู้ดูแลระบบ — ต้องใช้ได้ระหว่างปรับปรุง) */
+export const MAINTAINABLE_PAGES = ['dashboard', 'icd10', ...DEPARTMENT_PAGES] as const;
+
 export type PageKey = 'dashboard' | 'icd10' | (typeof DEPARTMENT_PAGES)[number] | 'contact' | 'myfeedback' | 'admin';
 
 export interface SessionUser {

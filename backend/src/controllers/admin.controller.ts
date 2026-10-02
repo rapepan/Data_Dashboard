@@ -1,5 +1,6 @@
 import type { FastifyRequest } from 'fastify';
 import { auditLog, AUDIT_ACTIONS, type AuditWho } from '../auth/audit-log';
+import { USAGE_RANGES, usageSummary, type UsageRange } from '../auth/usage-stats';
 
 export const adminController = {
   async audit(req: FastifyRequest<{ Querystring: { limit?: string; loginname?: string; action?: string; who?: string } }>) {
@@ -14,5 +15,11 @@ export const adminController = {
       actions: AUDIT_ACTIONS,
       users: await auditLog.users(),
     };
+  },
+
+  /** สรุปการใช้งาน ?days=7|30|90 (ค่าเริ่มต้น 30) */
+  async usage(req: FastifyRequest<{ Querystring: { days?: string } }>) {
+    const days = USAGE_RANGES.find(d => d === Number(req.query.days)) ?? (30 as UsageRange);
+    return usageSummary(days);
   },
 };

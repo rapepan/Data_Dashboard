@@ -4,6 +4,7 @@ import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import AppFooter from './AppFooter';
 import { useAuth } from '../auth/AuthContext';
+import SystemLayer from './system/SystemLayer';
 
 const COLLAPSED_KEY = 'sidebar-collapsed';
 
@@ -35,6 +36,7 @@ export default function Layout() {
       <main className="main-area">
         <Topbar onMenuClick={toggleSidebar} />
         <div className="page-content">
+          <SystemLayer />
           {notice && (
             <div className="notice-bar" role="status">
               <i className="fa-solid fa-circle-info" />

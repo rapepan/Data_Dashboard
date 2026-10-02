@@ -8,3 +8,7 @@ import * as path from 'node:path';
  */
 const envFile = path.resolve(__dirname, '../.env');
 if (existsSync(envFile)) process.loadEnvFile(envFile);
+
+// ระบบคิดวันที่/ช่วงเวลาตามเวลาไทย — server Linux มักตั้งเป็น UTC (ช่วง 00:00–07:00 "วันนี้" จะผิดวัน)
+// ไม่ได้ตั้ง TZ ไว้ → ใช้เวลาไทย (ตั้ง TZ ใน environment เองได้ถ้าจำเป็น)
+process.env.TZ ||= 'Asia/Bangkok';

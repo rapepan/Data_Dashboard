@@ -10,8 +10,9 @@ import { DATA_DIR } from '../src/utils/paths';
 import { userSettings } from '../src/auth/user-settings';
 import { loginThrottle } from '../src/auth/auth.service';
 import { presence } from '../src/auth/presence';
+import { systemStore } from '../src/system/system-store';
 
-const TABLES = ['feedback', 'feedback_history', 'audit_log', 'audit_log_archive', 'user_settings', 'login_failures', 'users_seen'] as const;
+const TABLES = ['feedback', 'feedback_history', 'audit_log', 'audit_log_archive', 'user_settings', 'login_failures', 'users_seen', 'system_notices', 'app_settings'] as const;
 const dropTestTables = async () => {
   for (const name of TABLES) await appDb.exec(`DROP TABLE IF EXISTS ${appDb.t(name)}`);
 };
@@ -36,7 +37,7 @@ describe('ฐาน data_dashboard', () => {
   it('สร้างตารางเป็น utf8mb4', async () => {
     const rows = await appDb.rows<RowDataPacket>(
       "SELECT TABLE_NAME, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'zz\\_test\\_%'");
-    expect(rows).toHaveLength(7);
+    expect(rows).toHaveLength(9);
     for (const r of rows) expect(r.TABLE_COLLATION).toMatch(/^utf8mb4/);
   });
 });
@@ -224,5 +225,44 @@ describe('ผู้ใช้งานระบบ (ตาราง users_seen)',
     expect(me?.status).toBe('offline');
     expect(me?.loggedOutAt).toBeTruthy();
     expect(me?.name).toBe('ผู้ทดสอบ ออนไลน์'); // ชื่อไม่หาย
+  });
+});
+
+describe('ประกาศ / โหมดปิดปรับปรุง (ตาราง system_notices / app_settings)', () => {
+  const at = (m: number) => new Date(Date.now() + m * 60_000).toISOString();
+
+  it('ประกาศ: เพิ่ม / แสดงตามช่วงเวลา / แก้ / ลบ — ภาษาไทยไม่เพี้ยน', async () => {
+    const a = await systemStore.addNotice({ message: 'ปิดปรับปรุงระบบ 18:00–18:30 น. 🔧', level: 'warning', startsAt: at(-5), endsAt: at(30), maintenanceStart: at(10), maintenanceEnd: at(20), autoMaintenance: true }, '__test_admin');
+    await systemStore.addNotice({ message: 'ประกาศพรุ่งนี้', level: 'info', startsAt: at(600), endsAt: at(700), maintenanceStart: null, maintenanceEnd: null, autoMaintenance: false }, '__test_admin');
+    const [active] = await systemStore.activeNotices();
+    expect(active).toMatchObject({ maintenanceStart: a.maintenanceStart, maintenanceEnd: a.maintenanceEnd, autoMaintenance: true, autoStartedAt: null });
+    await systemStore.markAutoStarted(a.id);
+    expect((await systemStore.listNotices()).find(n => n.id === a.id)?.autoStartedAt).toBeTruthy();
+    expect((await systemStore.activeNotices()).map(n => n.message)).toEqual(['ปิดปรับปรุงระบบ 18:00–18:30 น. 🔧']);
+    expect(await systemStore.listNotices()).toHaveLength(2);
+    const edited = await systemStore.updateNotice(a.id, { message: 'แก้ข้อความ', level: 'info', startsAt: a.startsAt, endsAt: a.endsAt, maintenanceStart: null, maintenanceEnd: null, autoMaintenance: false });
+    expect(edited?.autoStartedAt).toBeNull();
+    expect(edited?.message).toBe('แก้ข้อความ');
+    expect(edited?.updatedAt).toBeTruthy();
+    expect(await systemStore.deleteNotice(a.id)).toBe(true);
+    expect(await systemStore.activeNotices()).toHaveLength(0);
+  });
+
+  it('โหมดปิดปรับปรุง: บันทึกแล้วโหลดกลับได้ (เหมือนรีสตาร์ท backend)', async () => {
+    await systemStore.setMaintenance(true, 'อัปเดตระบบ', '__test_admin');
+    await systemStore.setMaintenance(false, '', '__test_admin');
+    await systemStore.setMaintenance(true, 'อัปเดตรอบสอง', '__test_admin');
+    expect((await systemStore.loadMaintenance())).toMatchObject({ on: true, message: 'อัปเดตรอบสอง', by: '__test_admin' });
+    await systemStore.setMaintenance(false, '', '__test_admin');
+    expect((await systemStore.loadMaintenance()).on).toBe(false);
+  });
+});
+
+describe('ปิดปรับปรุงเฉพาะหน้า (app_settings: page_maintenance)', () => {
+  it('บันทึก / โหลดกลับ (เหมือนรีสตาร์ท) / เปิดทุกหน้ากลับ', async () => {
+    await systemStore.setPageMaintenance(['opd', 'drugbudget'], 'ปรับปรุงข้อมูลยา', '__test_admin');
+    expect(await systemStore.loadPageMaintenance()).toMatchObject({ pages: ['opd', 'drugbudget'], message: 'ปรับปรุงข้อมูลยา', by: '__test_admin' });
+    await systemStore.setPageMaintenance([], '', '__test_admin');
+    expect((await systemStore.loadPageMaintenance()).pages).toEqual([]);
   });
 });

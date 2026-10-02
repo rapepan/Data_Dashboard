@@ -38,6 +38,8 @@ export default function RankTable({ items, codeLabel, nameLabel, kind = 'opd' }:
         )}
         <TopLimitSelect value={limit} onChange={setLimit} />
       </div>
+      {/* จอแคบ: เลื่อนตารางซ้าย-ขวาในกรอบ ไม่ดันทั้งหน้าให้กว้าง */}
+      <div className="table-responsive">
       <table className="report-table rank-list">
         <thead>
           <tr>
@@ -61,6 +63,7 @@ export default function RankTable({ items, codeLabel, nameLabel, kind = 'opd' }:
           {rows.length === 0 && <tr><td colSpan={hasPatients ? 5 : 4} className="empty">ไม่มีข้อมูลในช่วงนี้</td></tr>}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

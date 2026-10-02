@@ -42,6 +42,8 @@ export default function DrugTable({ items, nameLabel, searchPlaceholder, accent 
         <label className="table-search"><i className="fa-solid fa-magnifying-glass" /><input value={query} onChange={e => setQuery(e.target.value)} placeholder={searchPlaceholder} /></label>
         <TopLimitSelect value={limit} onChange={setLimit} />
       </div>
+      {/* จอแคบ: เลื่อนตารางซ้าย-ขวาในกรอบ ไม่ดันทั้งหน้าให้กว้าง */}
+      <div className="table-responsive">
       <table className="report-table rank-list">
         <thead>
           <tr><th className="center">อันดับ</th><th>รหัสยา</th><th>{nameLabel}</th>{hasEd && <th className="center">บัญชียา</th>}{hasUnit && <th className="center">หน่วยนับ</th>}<th className="num">จำนวน (ชิ้น)</th><th className="num">มูลค่ารวม (บาท)</th></tr>
@@ -61,6 +63,7 @@ export default function DrugTable({ items, nameLabel, searchPlaceholder, accent 
           {rows.length === 0 && <tr><td colSpan={columns} className="empty">ไม่พบรายการยาที่ค้นหา</td></tr>}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

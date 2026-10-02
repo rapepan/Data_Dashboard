@@ -17,9 +17,11 @@ import ReadmitPage from '../pages/ReadmitPage';
 import ReferralPage from '../pages/ReferralPage';
 import DrugBudgetPage from '../pages/DrugBudgetPage';
 import AuditLogPage from '../pages/admin/AuditLogPage';
+import UsagePage from '../pages/admin/UsagePage';
 import FeedbackPage from '../pages/admin/FeedbackPage';
 import DataStatusPage from '../pages/admin/DataStatusPage';
 import UsersPage from '../pages/admin/UsersPage';
+import SystemPage from '../pages/admin/SystemPage';
 import ContactPage from '../pages/ContactPage';
 import PostalDrugPage from '../pages/PostalDrugPage';
 import MyFeedbackPage from '../pages/MyFeedbackPage';
@@ -52,6 +54,8 @@ export default function AppRoutes() {
         <Route path="/admin/feedback" element={guard('admin', <FeedbackPage />)} />
         <Route path="/admin/data" element={guard('admin', <DataStatusPage />)} />
         <Route path="/admin/users" element={guard('admin', <UsersPage />)} />
+        <Route path="/admin/usage" element={guard('admin', <UsagePage />)} />
+        <Route path="/admin/system" element={guard('admin', <SystemPage />)} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

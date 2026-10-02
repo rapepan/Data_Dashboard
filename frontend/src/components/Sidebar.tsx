@@ -4,6 +4,8 @@ import { navIconClass, visibleNavGroups } from '../routes/navigation';
 import { useAuth } from '../auth/AuthContext';
 import { useFeedbackSummary } from '../hooks/useFeedbackSummary';
 import { useMyFeedbackSummary } from '../hooks/useMyFeedbackSummary';
+import { OPEN_CHANGELOG_EVENT } from './system/WhatsNew';
+import { useSystemStatus } from '../hooks/useSystemStatus';
 import ConfirmDialog from './ConfirmDialog';
 
 interface SidebarProps {
@@ -28,6 +30,8 @@ export default function Sidebar({ open, collapsed, onClose }: SidebarProps) {
   const badgeFor = (key: string) => (key === 'admin-feedback' ? pendingFeedback : key === 'my-feedback' ? myUnread : 0);
   const navigate = useNavigate();
   const location = useLocation();
+  // หน้าที่ผู้ดูแลปิดปรับปรุงเฉพาะหน้า — แสดงไอคอน 🔧 ท้ายชื่อเมนู (ยังกดเข้าได้ จะเห็นข้อความแจ้ง)
+  const closedPages = useSystemStatus().status?.pageMaintenance.pages ?? [];
 
   const showTip = (label: string) => (e: MouseEvent<HTMLElement>) => {
     if (!collapsed) return;
@@ -41,7 +45,17 @@ export default function Sidebar({ open, collapsed, onClose }: SidebarProps) {
       <aside className={`sidebar${open ? ' open' : ''}${collapsed ? ' collapsed' : ''}`}>
         <div className="sidebar-brand">
           <img className="brand-logo" src="/logo.jpg" alt="Data Dashboard โรงพยาบาลบางเสาธง" />
-          <div className="brand-text"><strong>DATA BSTH</strong><small>V.0.1</small></div>
+          <div className="brand-text">
+            <strong>DATA BSTH</strong>
+            {/* เลขเวอร์ชันจาก package.json · login แล้วกดเพื่อดูบันทึกการเปลี่ยนแปลง (ผู้เยี่ยมชมเห็นแค่เลข) */}
+            {user ? (
+              <button type="button" className="brand-version" onClick={() => window.dispatchEvent(new Event(OPEN_CHANGELOG_EVENT))} title="บันทึกการเปลี่ยนแปลง">
+                V {__APP_VERSION__}
+              </button>
+            ) : (
+              <span className="brand-version is-static">V {__APP_VERSION__}</span>
+            )}
+          </div>
           <button className="btn sidebar-close d-lg-none" onClick={onClose}><i className="fa-solid fa-xmark" /></button>
         </div>
 
@@ -61,6 +75,9 @@ export default function Sidebar({ open, collapsed, onClose }: SidebarProps) {
                   onMouseLeave={hideTip}
                 >
                   <i className={navIconClass(item.icon)} /><span>{item.label}</span>
+                  {closedPages.includes(item.page ?? item.key) && (
+                    <i className="fa-solid fa-screwdriver-wrench nav-maintenance" title="หน้านี้กำลังปิดปรับปรุง" aria-label="ปิดปรับปรุง" />
+                  )}
                   {badgeFor(item.key) > 0 && <em className="nav-badge" aria-label={item.key === 'my-feedback' ? `มีความเคลื่อนไหวใหม่ ${badgeFor(item.key)} เรื่อง` : `ยังไม่ดำเนินการ ${badgeFor(item.key)} เรื่อง`}>{badgeFor(item.key) > 99 ? '99+' : badgeFor(item.key)}</em>}
                 </NavLink>
               ))}

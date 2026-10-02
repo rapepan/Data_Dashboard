@@ -6,7 +6,7 @@ export const appDb = {
     return Boolean(process.env.DASHBOARD_DB_HOST && process.env.DASHBOARD_DB_DATABASE);
   },
 
-  t(name: 'feedback' | 'feedback_history' | 'audit_log' | 'audit_log_archive' | 'user_settings' | 'login_failures' | 'users_seen') {
+  t(name: 'feedback' | 'feedback_history' | 'audit_log' | 'audit_log_archive' | 'user_settings' | 'login_failures' | 'users_seen' | 'system_notices' | 'app_settings') {
     return `\`${process.env.DASHBOARD_DB_TABLE_PREFIX ?? ''}${name}\``;
   },
 
@@ -146,6 +146,34 @@ export const appDb = {
       logged_out_at DATETIME(3) NULL COMMENT 'logout / session หมดอายุ ล่าสุด',
       KEY idx_last_seen (last_seen)
     ) ${options} COMMENT='ผู้ใช้ที่เคย login เข้าระบบ + สถานะออนไลน์'`);
+    await this.exec(`CREATE TABLE IF NOT EXISTS ${t('system_notices')} (
+      id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      message VARCHAR(500) NOT NULL,
+      level VARCHAR(16) NOT NULL COMMENT 'info / warning',
+      starts_at DATETIME(3) NOT NULL,
+      ends_at DATETIME(3) NOT NULL,
+      created_by VARCHAR(64) NOT NULL,
+      created_at DATETIME(3) NOT NULL,
+      updated_at DATETIME(3) NULL,
+      KEY idx_window (starts_at, ends_at)
+    ) ${options} COMMENT='ประกาศถึงผู้ใช้ (แถบบนสุดของทุกหน้า) เช่น แจ้งปิดปรับปรุงล่วงหน้า'`);
+    // คอลัมน์ที่เพิ่มทีหลัง — ตารางที่สร้างไว้ก่อนแล้วเติมให้ (ไม่แตะข้อมูลเดิม)
+    const noticeColumns = new Set((await this.rows<RowDataPacket>(
+      'SELECT COLUMN_NAME AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+      [`${process.env.DASHBOARD_DB_TABLE_PREFIX ?? ''}system_notices`])).map(r => String(r.c)));
+    const addColumn = async (name: string, definition: string) => {
+      if (!noticeColumns.has(name)) await this.exec(`ALTER TABLE ${t('system_notices')} ADD COLUMN ${name} ${definition}`);
+    };
+    await addColumn('maintenance_start', "DATETIME(3) NULL COMMENT 'เวลาปิดปรับปรุงจริง (เริ่ม)'");
+    await addColumn('maintenance_end', "DATETIME(3) NULL COMMENT 'เวลาปิดปรับปรุงจริง (จบ)'");
+    await addColumn('auto_maintenance', "TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'ถึงเวลาแล้วเปิด/ปิดโหมดปิดปรับปรุงเอง'");
+    await addColumn('auto_started_at', "DATETIME(3) NULL COMMENT 'ระบบเปิดโหมดอัตโนมัติแล้วเมื่อไร'");
+    await this.exec(`CREATE TABLE IF NOT EXISTS ${t('app_settings')} (
+      name VARCHAR(64) NOT NULL PRIMARY KEY,
+      value TEXT NOT NULL COMMENT 'JSON',
+      updated_at DATETIME(3) NOT NULL,
+      updated_by VARCHAR(64) NULL
+    ) ${options} COMMENT='ค่าตั้งของระบบ เช่น โหมดปิดปรับปรุง'`);
   },
 
   async close() {

@@ -18,6 +18,10 @@ import { referralRoutes } from './referral.routes';
 import { drugBudgetRoutes } from './drug-budget.routes';
 import { feedbackRoutes } from './feedback.routes';
 import { clientErrorRoutes } from './client-error.routes';
+import { systemRoutes } from './system.routes';
+import { systemStore } from '../system/system-store';
+
+const MAINTENANCE_OPEN = ['/api/system/', '/api/auth/', '/api/client-error'];
 import { currentUser, isBackgroundRequest, optionalAuth, requirePage } from '../middleware/auth';
 import { auditLog, GUEST_NAME } from '../auth/audit-log';
 import { presence } from '../auth/presence';
@@ -30,6 +34,8 @@ const ADMIN_PAGE_LABEL: Record<string, string> = {
   '/api/admin/feedback': 'แจ้งปัญหา / ข้อเสนอแนะ',
   '/api/admin/cache': 'สถานะข้อมูลพักไว้',
   '/api/admin/users': 'ผู้ใช้งานระบบ',
+  '/api/admin/system': 'ประกาศ / ปิดปรับปรุง',
+  '/api/admin/usage': 'สรุปการใช้งาน',
 };
 
 /** route กลุ่มนี้เปิดได้เฉพาะผู้ที่มีสิทธิ์ดูหน้า `page` */
@@ -48,6 +54,16 @@ function isRepeatView(key: string) {
 function guarded(page: PageKey, routes: FastifyPluginAsync): FastifyPluginAsync {
   return async fastify => {
     fastify.addHook('preHandler', requirePage(page));
+    // ปิดปรับปรุงเฉพาะหน้านี้ → ผู้ใช้ทั่วไป/ผู้เยี่ยมชมได้ 503 (หน้าอื่นใช้ได้ปกติ) · ผู้ดูแลยังเปิดได้ไว้ตรวจ
+    fastify.addHook('preHandler', async (req, reply) => {
+      const closed = systemStore.pageMaintenance();
+      if (!closed.pages.includes(page) || currentUser(req)?.role === 'admin') return;
+      // X-Maintenance: หน้าเว็บตรวจสถานะระบบทันที → เปลี่ยนเป็นกล่อง "หน้านี้กำลังปรับปรุง" ไม่ต้องรอรอบ 1 นาที
+      return reply.status(503).header('X-Maintenance', '1').send({
+        statusCode: 503, error: 'Service Unavailable', maintenance: true, page,
+        message: closed.message || 'หน้านี้กำลังปิดปรับปรุงชั่วคราว กรุณาลองใหม่ภายหลัง',
+      });
+    });
     await fastify.register(routes);
   };
 }
@@ -60,6 +76,19 @@ export async function registerRoutes(fastify: FastifyInstance) {
       const user = currentUser(req);
       if (user) presence.touch(user, req.ip, isBackgroundRequest(req));
       else presence.touchGuest(req.ip);
+    });
+
+    // โหมดปิดปรับปรุง: ผู้ใช้ทั่วไป/ผู้เยี่ยมชมได้ 503 (หน้าเว็บแสดงหน้าปิดปรับปรุง) · ผู้ดูแลใช้งานได้ปกติ
+    // เปิดไว้เสมอ: สถานะระบบ, login/logout (ผู้ดูแลต้องเข้ามาปิดโหมดได้), รายงาน error จากหน้าเว็บ
+    app.addHook('preHandler', async (req, reply) => {
+      const maintenance = systemStore.maintenance();
+      if (!maintenance.on || currentUser(req)?.role === 'admin') return;
+      const path = req.url.split('?')[0];
+      if (MAINTENANCE_OPEN.some(prefix => path.startsWith(prefix))) return;
+      return reply.status(503).header('X-Maintenance', '1').send({
+        statusCode: 503, error: 'Service Unavailable', maintenance: true,
+        message: maintenance.message || 'ระบบกำลังปิดปรับปรุงชั่วคราว กรุณาลองใหม่ภายหลัง',
+      });
     });
 
     // บันทึกการเปิดดูข้อมูล — ทั้งผู้ที่ login และผู้เยี่ยมชม (guest + IP) ยกเว้น auto-refresh เบื้องหลัง และ /auth/*
@@ -78,6 +107,7 @@ export async function registerRoutes(fastify: FastifyInstance) {
     await app.register(authRoutes);
     await app.register(feedbackRoutes);
     await app.register(clientErrorRoutes);
+    await app.register(systemRoutes);
     await app.register(guarded('dashboard', dashboardRoutes));
     await app.register(guarded('icd10', icd10Routes));
     await app.register(guarded('queue', queueRoutes));

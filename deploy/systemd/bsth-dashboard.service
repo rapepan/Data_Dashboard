@@ -1,0 +1,46 @@
+# DATA BSTH — backend (Node.js) ให้ systemd ดูแล: เปิดเครื่องแล้วรันเอง · ดับแล้วเปิดใหม่เองภายใน 5 วินาที
+#
+# ติดตั้ง:
+#   sudo cp deploy/systemd/bsth-dashboard.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now bsth-dashboard
+# ดูสถานะ / log:
+#   systemctl status bsth-dashboard
+#   journalctl -u bsth-dashboard -f          (ดูสด ๆ — ข้อความเดียวกับเทอร์มินัลตอน dev)
+#   journalctl -u bsth-dashboard --since today
+#
+# ถ้าติดตั้งที่อื่นหรือใช้บัญชีอื่น แก้ User / Group / WorkingDirectory / ReadWritePaths ให้ตรง
+# ต้องรันตัวเดียวเท่านั้น (สถานะออนไลน์ / ช่องสัญญาณสด / ตัวตั้งเวลาปิดปรับปรุง อยู่ในหน่วยความจำของ backend)
+
+[Unit]
+Description=DATA BSTH dashboard backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bsth
+Group=bsth
+WorkingDirectory=/opt/bsth-dashboard/backend
+ExecStart=/usr/bin/node dist/server.js
+Environment=NODE_ENV=production
+Environment=TZ=Asia/Bangkok
+# journald ไม่แสดงสี — ปิดรหัสสีในข้อความ
+Environment=NO_COLOR=1
+# ค่าอื่นอ่านจาก backend/.env (backend โหลดเอง)
+
+Restart=always
+RestartSec=5
+# ปิดอย่างนุ่มนวล: ปิดช่องสัญญาณสด บันทึกสถานะออนไลน์ แล้วจบ (รอสูงสุด 20 วินาที)
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+# ความปลอดภัย: เขียนได้เฉพาะโฟลเดอร์ data · มองไม่เห็นโฟลเดอร์ home ของคนอื่น · ไม่ได้สิทธิ์เพิ่ม
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/bsth-dashboard/backend/data
+
+[Install]
+WantedBy=multi-user.target

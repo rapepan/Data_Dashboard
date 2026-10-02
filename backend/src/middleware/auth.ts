@@ -20,7 +20,8 @@ declare module '@fastify/jwt' {
 export const SESSION_COOKIE = 'bsth_session';
 export const SESSION_IDLE_MINUTES = Number(process.env.SESSION_IDLE_MINUTES || 30);
 export function isBackgroundRequest(request: FastifyRequest) {
-  return request.headers['x-background'] === '1';
+  // ช่องสัญญาณสด (SSE) ใส่ header ไม่ได้ — นับเป็นเบื้องหลังเสมอ (ไม่ต่ออายุ session / ไม่นับเป็นการใช้งาน / ไม่บันทึกการเปิดดู)
+  return request.headers['x-background'] === '1' || request.url.startsWith('/api/system/events');
 }
 
 const DEV_SECRET = 'bsth-dev-secret-do-not-use-in-production';

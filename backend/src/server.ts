@@ -15,6 +15,10 @@ import { appDb } from './repositories/app-db';
 import { importLegacyFiles } from './repositories/app-db-migrate';
 import { presence } from './auth/presence';
 import { sessionRevocation } from './auth/session-revocation';
+import { systemStore } from './system/system-store';
+import { appVersion } from './system/version';
+import { systemScheduler } from './system/scheduler';
+import { systemEvents } from './system/events';
 
 const REPORT_DATA_SOURCE: 'mock' | 'hosxp' = 'mock';
 
@@ -58,6 +62,7 @@ async function printStartupSummary(host: string, port: number, restoredCache: nu
   const audit = await auditLog.stats().catch(() => null);
   logger.info('');
   printBlock(`พร้อมใช้งาน ➜ http://${host}:${port}/api`, [
+    ['เวอร์ชัน', `v${appVersion()}${systemStore.maintenance().on ? ` ${color.gray('·')} ${color.red('โหมดปิดปรับปรุง')}` : ''}`],
     ['HOSxP', hosxp],
     ['ข้อมูลรายงาน', REPORT_DATA_SOURCE === 'mock' ? color.yellow('ข้อมูลจำลอง (mock)') : color.green('HOSxP จริง')],
     ['Session', `หมดอายุเมื่อไม่ใช้งาน ${SESSION_IDLE_MINUTES} นาที`],
@@ -79,6 +84,13 @@ async function bootstrap() {
   await app.listen({ port, host });
   const restored = prewarm.start();
   const appDbStatus = await prepareAppDb();
+  // โหมดปิดปรับปรุง — รีสตาร์ทระหว่างปิดปรับปรุงแล้วยังปิดอยู่ (จนกว่าผู้ดูแลจะกดปิดโหมด)
+  const maintenance = await systemStore.loadMaintenance().catch(() => systemStore.maintenance());
+  if (maintenance.on) logger.warn(`[system] ระบบอยู่ในโหมดปิดปรับปรุง (เปิดโดย ${maintenance.by ?? '-'}) — ผู้ใช้ทั่วไปเข้าไม่ได้ ผู้ดูแลกดปิดได้ที่หน้า ประกาศ / ปิดปรับปรุง`);
+  const closedPages = await systemStore.loadPageMaintenance().catch(() => systemStore.pageMaintenance());
+  // ประกาศที่ตั้ง "เปิดโหมดปิดปรับปรุงอัตโนมัติ" — ตรวจเวลาทุก 30 วินาที
+  systemScheduler.start();
+  if (closedPages.pages.length) logger.warn(`[system] หน้าที่ปิดปรับปรุงอยู่: ${closedPages.pages.join(', ')} (ผู้ดูแลเปิดกลับได้ที่หน้า ประกาศ / ปิดปรับปรุง)`);
   await printStartupSummary(host, port, restored, appDbStatus);
   // ประวัติการใช้งานที่พักไว้ตอนฐานล่ม — ส่งเข้าฐานเมื่อกลับมา
   setInterval(() => { auditLog.flushPending().catch(() => undefined); }, 2 * 60_000).unref();
@@ -113,6 +125,7 @@ async function bootstrap() {
   const daily = () => { void purgeImages().then(archiveAudit).then(cleanupLoginFailures); };
   setTimeout(daily, 30_000).unref();
   setInterval(daily, 24 * 3_600_000).unref();
+  logger.addHourlyPart(() => ['การเชื่อมต่อสด', systemEvents.count() ? `${systemEvents.count()} หน้าเว็บ (เบราว์เซอร์)` : null]);
   logger.addHourlyPart(() => {
     const rate = reportCache.hitRate();
     return ['ข้อมูลพักไว้', rate === null ? null : `ใช้ผลที่พักไว้ ${rate}%`];
@@ -141,6 +154,7 @@ async function shutdown(signal: string) {
   logger.info(color.gray(`ได้รับ ${signal} — กำลังปิดเซิร์ฟเวอร์...`));
   setTimeout(() => process.exit(1), 5000).unref();
   try {
+    systemEvents.closeAll(); // ช่องสัญญาณสดค้างอยู่ ปิดก่อน ไม่งั้นปิดเซิร์ฟเวอร์ค้าง
     await app?.close();
     prewarm.stop();
     await hosxpRepository.close();

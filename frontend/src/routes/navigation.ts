@@ -35,8 +35,10 @@ export const NAV_GROUPS: NavGroup[] = [
   ]},
   { label: 'ผู้ดูแลระบบ', icon: 'fa-gear', items: [
     { key: 'admin-users', page: 'admin', path: '/admin/users', icon: 'fa-users', label: 'ผู้ใช้งานระบบ' },
+    { key: 'admin-usage', page: 'admin', path: '/admin/usage', icon: 'fa-chart-column', label: 'สรุปการใช้งาน' },
     { key: 'admin-feedback', page: 'admin', path: '/admin/feedback', icon: 'fa-comment-dots', label: 'แจ้งปัญหา / ข้อเสนอแนะ' },
     { key: 'admin-data', page: 'admin', path: '/admin/data', icon: 'fa-database', label: 'สถานะข้อมูล' },
+    { key: 'admin-system', page: 'admin', path: '/admin/system', icon: 'fa-bullhorn', label: 'ประกาศ / ปิดปรับปรุง' },
     { key: 'admin-audit', page: 'admin', path: '/admin/audit', icon: 'fa-clock-rotate-left', label: 'ประวัติการใช้งาน' },
   ]},
 ];

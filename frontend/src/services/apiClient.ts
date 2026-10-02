@@ -26,6 +26,10 @@ export class ApiError extends Error {
 /** แจ้งทั้งระบบเมื่อ session login หมดอายุ/ถูกถอนสิทธิ์ (AuthProvider รับไปเปลี่ยนเป็นผู้เยี่ยมชม) */
 export const SESSION_EXPIRED_EVENT = 'api:session-expired';
 
+/** เรียก backend ไม่ได้ / ระบบปิดปรับปรุง — ให้ตรวจสถานะระบบทันที (hooks/useSystemStatus.ts) ไม่ต้องรอรอบ 1 นาที */
+export const SYSTEM_CHECK_EVENT = 'api:system-check';
+const requestSystemCheck = () => window.dispatchEvent(new Event(SYSTEM_CHECK_EVENT));
+
 /* ---------- ความจำระยะสั้นของหน้าเว็บ (อยู่ในหน่วยความจำ ปิดแท็บ/รีเฟรชแล้วหาย) ---------- */
 const memo = new Map<string, { at: number; data: unknown }>();
 /** GET ที่กำลังรอคำตอบอยู่ — คำขอเดียวกันซ้อนเข้ามา (เช่น React StrictMode เรียก 2 รอบตอนพัฒนา, กดรัว) ใช้คำขอเดิมร่วมกัน */
@@ -70,6 +74,7 @@ async function send<T>(method: string, path: string, body: unknown, { params, si
       window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT, { detail: res.headers.get('X-Session-Revoked') === '1' ? 'revoked' : 'expired' }));
     }
     const data = await res.json().catch(() => null);
+    if ((res.status === 503 && res.headers.get('X-Maintenance') === '1') || (res.status >= 502 && res.status <= 504)) requestSystemCheck();
     if (!res.ok) {
       // 502–504 = proxy ต่อ backend ไม่ได้ (backend ไม่ได้รัน/ล่ม) — ไม่มีข้อความจาก backend ให้ใช้
       const fallback = res.status >= 502 && res.status <= 504 ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ (backend ไม่ตอบสนอง) กรุณาลองใหม่อีกครั้ง' : `API error ${res.status}`;
@@ -78,6 +83,10 @@ async function send<T>(method: string, path: string, body: unknown, { params, si
     }
     if (memoKey) memo.set(memoKey, { at: Date.now(), data });
     return data as T;
+  }).catch(error => {
+    // เชื่อมต่อไม่ได้เลย (network error / หมดเวลา) — อาจกำลังอัปเดตระบบ
+    if (!(error instanceof ApiError)) requestSystemCheck();
+    throw error;
   });
 
   return task;
