@@ -32,12 +32,18 @@ function describe(user: SessionUser | null) {
 
 export const authController = {
   async login(req: FastifyRequest<{ Body: LoginBody }>, reply: FastifyReply) {
-    const loginname = String(req.body?.loginname ?? '').trim();
+    // ชื่อผู้ใช้ใน HOSxP ไม่ยาวเกิน 64 ตัว — ตัดไว้ก่อนบันทึกประวัติ/นับ login ผิด
+    const loginname = String(req.body?.loginname ?? '').trim().slice(0, 64);
     const password = String(req.body?.password ?? '');
     if (!loginname || !password) {
       return reply.status(400).send({ statusCode: 400, error: 'Bad Request', message: 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน' });
     }
 
+    if (await loginThrottle.ipBlocked(req.ip)) {
+      logger.tally('loginFailed');
+      logger.auth(false, `${cleanIp(req.ip)} ถูกพักการ login 5 นาที (เครื่องนี้กรอกผิดหลายบัญชี)`);
+      return reply.status(429).send({ statusCode: 429, error: 'Too Many Requests', message: 'เครื่องนี้กรอกรหัสผ่านผิดหลายครั้ง กรุณารอ 5 นาทีแล้วลองใหม่' });
+    }
     if (await loginThrottle.isBlocked(loginname, req.ip)) {
       logger.tally('loginFailed');
       logger.auth(false, `${loginname} ถูกพักการ login 5 นาที (ผิดหลายครั้ง) · ${cleanIp(req.ip)}`);

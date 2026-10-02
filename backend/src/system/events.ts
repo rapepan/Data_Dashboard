@@ -11,6 +11,9 @@ import { buildSystemStatus } from './status';
  * - จำกัดจำนวนเส้น SSE_MAX_CLIENTS (ค่าเริ่มต้น 500)
  */
 const MAX_CLIENTS = Number(process.env.SSE_MAX_CLIENTS) || 500;
+/** ต่อเครื่อง (IP) — ปกติ 1 เส้นต่อเบราว์เซอร์ เผื่อหลายเบราว์เซอร์/เครื่องที่ใช้ IP ร่วมกัน (NAT) */
+const MAX_PER_IP = Number(process.env.SSE_MAX_PER_IP) || 20;
+const perIp = new Map<string, number>();
 const HEARTBEAT_MS = 25_000;
 
 const clients = new Set<ServerResponse>();
@@ -28,6 +31,10 @@ export const systemEvents = {
 
   /** เปิดช่องสัญญาณให้ 1 หน้าเว็บ */
   async connect(req: FastifyRequest, reply: FastifyReply) {
+    const ip = req.ip;
+    if ((perIp.get(ip) ?? 0) >= MAX_PER_IP) {
+      return reply.status(429).send({ statusCode: 429, error: 'Too Many Requests', message: 'เปิดการเชื่อมต่อสดจากเครื่องนี้มากเกินไป — หน้าเว็บจะตรวจสถานะแบบปกติแทน' });
+    }
     if (clients.size >= MAX_CLIENTS) {
       return reply.status(503).send({ statusCode: 503, error: 'Service Unavailable', message: 'การเชื่อมต่อสดเต็ม — หน้าเว็บจะตรวจสถานะแบบปกติแทน' });
     }
@@ -44,6 +51,7 @@ export const systemEvents = {
     // เส้นแรก = ยังไม่มีใครถือสถานะ → นับว่าสถานะล่าสุดที่ส่งคือก้อนนี้
     if (clients.size === 0) lastPayload = payload;
     clients.add(res);
+    perIp.set(ip, (perIp.get(ip) ?? 0) + 1);
     send(res, 'retry: 3000\n\n');
     send(res, `event: status\ndata: ${payload}\n\n`);
 
@@ -52,6 +60,8 @@ export const systemEvents = {
     req.raw.on('close', () => {
       clearInterval(heartbeat);
       clients.delete(res);
+      const left = (perIp.get(ip) ?? 1) - 1;
+      if (left > 0) perIp.set(ip, left); else perIp.delete(ip);
       // ไม่มีใครต่ออยู่ = ไม่มีใครถือสถานะล่าสุด → ครั้งหน้าต้องส่งเสมอ
       if (clients.size === 0) lastPayload = '';
     });
@@ -83,5 +93,6 @@ export const systemEvents = {
   closeAll() {
     for (const res of clients) { try { res.end(); } catch { /* ปิดไปแล้ว */ } }
     clients.clear();
+    perIp.clear();
   },
 };

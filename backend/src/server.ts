@@ -19,6 +19,7 @@ import { systemStore } from './system/system-store';
 import { appVersion } from './system/version';
 import { systemScheduler } from './system/scheduler';
 import { systemEvents } from './system/events';
+import { watchdog } from './system/watchdog';
 
 const REPORT_DATA_SOURCE: 'mock' | 'hosxp' = 'mock';
 
@@ -131,6 +132,7 @@ async function bootstrap() {
     return ['ข้อมูลพักไว้', rate === null ? null : `ใช้ผลที่พักไว้ ${rate}%`];
   });
   monitor.start();
+  watchdog.start(); // ฐานข้อมูลล่มนาน / backend ดับไม่ปกติ → แจ้งผู้ดูแลทาง Telegram
   logger.startSummaries();
 }
 
@@ -157,6 +159,7 @@ async function shutdown(signal: string) {
     systemEvents.closeAll(); // ช่องสัญญาณสดค้างอยู่ ปิดก่อน ไม่งั้นปิดเซิร์ฟเวอร์ค้าง
     await app?.close();
     prewarm.stop();
+    watchdog.stop();
     await hosxpRepository.close();
     await presence.flush().catch(() => undefined);
     await appDb.close();

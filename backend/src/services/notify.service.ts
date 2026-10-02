@@ -6,6 +6,7 @@ import { feedbackImages } from '../feedback/feedback-images';
  * แจ้งเตือนเข้ามือถือผ่าน Telegram Bot — ตั้งค่าใน backend/.env
  *   TELEGRAM_BOT_TOKEN = token จาก @BotFather
  *   TELEGRAM_CHAT_ID   = ปลายทาง คั่นด้วย , ได้หลายที่ (ส่วนตัว = เลขบวก, กลุ่ม = เลขลบ)
+ *   TELEGRAM_ALERT_CHAT_ID = ปลายทางแจ้งเตือนระบบ (ล่ม / ดึงข้อมูลไม่ได้) — เว้นว่าง = ใช้ TELEGRAM_CHAT_ID
  *   APP_PUBLIC_URL     = ลิงก์เว็บ (https) สำหรับปุ่ม "เปิดดูในระบบ" — เว้นว่างได้
  * ไม่ตั้งค่า = ไม่ส่ง (ระบบอื่นทำงานปกติ) · ส่งไม่สำเร็จไม่ทำให้การแจ้งปัญหาล้ม
  */
@@ -20,9 +21,12 @@ const CATEGORY: Record<FeedbackCategory, { icon: string; label: string }> = {
   other: { icon: '💬', label: 'อื่น ๆ' },
 };
 
-function config() {
+const ids = (value: string | undefined) => (value ?? '').split(',').map(id => id.trim()).filter(Boolean);
+
+function config(kind: 'feedback' | 'alert' = 'feedback') {
   const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
-  const chatIds = (process.env.TELEGRAM_CHAT_ID ?? '').split(',').map(id => id.trim()).filter(Boolean);
+  const alertIds = ids(process.env.TELEGRAM_ALERT_CHAT_ID);
+  const chatIds = kind === 'alert' && alertIds.length ? alertIds : ids(process.env.TELEGRAM_CHAT_ID);
   return { token, chatIds };
 }
 
@@ -99,8 +103,8 @@ async function sendPhotosOnce(token: string, chatId: string, photos: { buffer: B
 }
 
 /** ส่งไปทุกปลายทาง — ล้มลองใหม่ 1 ครั้ง (เว้น 2 วินาที) แล้วรายงานในเทอร์มินัล */
-async function sendToAll(text: string, label: string, photos: { buffer: Buffer; mime: string; file: string }[] = [], photoCaption = '') {
-  const { token, chatIds } = config();
+async function sendToAll(text: string, label: string, photos: { buffer: Buffer; mime: string; file: string }[] = [], photoCaption = '', kind: 'feedback' | 'alert' = 'feedback') {
+  const { token, chatIds } = config(kind);
   if (!token || chatIds.length === 0) return;
   await Promise.all(chatIds.map(async chatId => {
     try {
@@ -144,7 +148,7 @@ export const notifyService = {
 
   /** แจ้งเตือนระบบ (เช่น ดึงข้อมูล HOSxP ล้มหลายรอบ) — ข้อความเป็น HTML ของ Telegram */
   alert(html: string) {
-    void sendToAll(html, 'แจ้งเตือนระบบ');
+    void sendToAll(html, 'แจ้งเตือนระบบ', [], '', 'alert');
   },
 
   /** ข้อความทดสอบ (ใช้ตอนตั้งค่า) */

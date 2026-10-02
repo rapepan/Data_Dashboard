@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import AppFooter from './AppFooter';
 import { useAuth } from '../auth/AuthContext';
 import SystemLayer from './system/SystemLayer';
+import PageSkeleton from './PageSkeleton';
 
 const COLLAPSED_KEY = 'sidebar-collapsed';
 
@@ -44,7 +45,10 @@ export default function Layout() {
               <button onClick={dismissNotice} aria-label="ปิด"><i className="fa-solid fa-xmark" /></button>
             </div>
           )}
-          <Outlet />
+          {/* หน้าที่แยกไฟล์ (lazy) ระหว่างโหลดครั้งแรก */}
+          <Suspense fallback={<PageSkeleton />}>
+            <Outlet />
+          </Suspense>
         </div>
         <AppFooter />
       </main>

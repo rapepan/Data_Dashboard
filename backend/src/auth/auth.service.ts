@@ -24,15 +24,20 @@ export async function verifyLogin(loginname: string, password: string): Promise<
 }
  
 const MAX_FAILS = 5;
+/** เครื่องเดียว (IP) ผิดรวมทุกชื่อผู้ใช้เกินนี้ใน 5 นาที → พักทั้งเครื่อง (กันลองรหัสเดียวกับหลายบัญชี) */
+const MAX_IP_FAILS = Number(process.env.LOGIN_MAX_IP_FAILS) || 30;
 const WINDOW_MS = 5 * 60 * 1000;
 const failures = new Map<string, number[]>();
 
 /* ตัวนับในหน่วยความจำ — ใช้เมื่อไม่ได้ตั้งค่าฐาน หรือฐานล่ม (ไม่ให้ฐานล่มแล้ว login ไม่ได้ / ไม่มีตัวกันเดารหัส) */
 const memoryThrottle = {
-  isBlocked(key: string) {
+  count(key: string) {
     const recent = (failures.get(key) ?? []).filter(t => Date.now() - t < WINDOW_MS);
-    failures.set(key, recent);
-    return recent.length >= MAX_FAILS;
+    if (recent.length) failures.set(key, recent); else failures.delete(key);
+    return recent.length;
+  },
+  isBlocked(key: string) {
+    return this.count(key) >= MAX_FAILS;
   },
   fail(key: string) {
     failures.set(key, [...(failures.get(key) ?? []), Date.now()]);
@@ -50,7 +55,8 @@ function warnDbThrottle(error: unknown) {
 }
 
 /**
- * login ผิด MAX_FAILS ครั้งใน 5 นาที (ต่อชื่อผู้ใช้ + IP) → พัก 5 นาที
+ * login ผิด MAX_FAILS ครั้งใน 5 นาที (ต่อชื่อผู้ใช้ + IP) → พักบัญชีนั้นบนเครื่องนั้น 5 นาที
+ * เครื่องเดียวผิดรวมทุกชื่อเกิน MAX_IP_FAILS → พักทั้งเครื่อง 5 นาที (ipBlocked)
  * ตั้งค่าฐานแล้วนับในตาราง login_failures (รีสตาร์ท backend ก็ยังนับต่อ · รันหลายตัวก็นับรวมกัน)
  */
 const throttleParams = (loginname: string, ip: string) => [loginname.slice(0, 64), ip.replace(/^::ffff:/, '').slice(0, 45)];
@@ -70,12 +76,29 @@ export const loginThrottle = {
       return memoryThrottle.isBlocked(key);
     }
   },
+  async ipBlocked(ip: string): Promise<boolean> {
+    const key = `ip|${ip}`;
+    if (!appDb.isConfigured()) return memoryThrottle.count(key) >= MAX_IP_FAILS;
+    try {
+      const [row] = await appDb.rows<RowDataPacket>(
+        `SELECT COUNT(*) AS n FROM ${appDb.t('login_failures')} WHERE ip = ? AND time > ?`,
+        [throttleParams('', ip)[1], new Date(Date.now() - WINDOW_MS)]);
+      return Number(row.n) >= MAX_IP_FAILS || memoryThrottle.count(key) >= MAX_IP_FAILS;
+    } catch (error) {
+      warnDbThrottle(error);
+      return memoryThrottle.count(key) >= MAX_IP_FAILS;
+    }
+  },
   async fail(loginname: string, ip: string): Promise<void> {
-    if (!appDb.isConfigured()) return memoryThrottle.fail(`${loginname}|${ip}`);
+    if (!appDb.isConfigured()) {
+      memoryThrottle.fail(`ip|${ip}`);
+      return memoryThrottle.fail(`${loginname}|${ip}`);
+    }
     try {
       await appDb.exec(`INSERT INTO ${appDb.t('login_failures')} (loginname, ip, time) VALUES (?, ?, ?)`, [...throttleParams(loginname, ip), new Date()]);
     } catch (error) {
       warnDbThrottle(error);
+      memoryThrottle.fail(`ip|${ip}`);
       memoryThrottle.fail(`${loginname}|${ip}`);
     }
   },
