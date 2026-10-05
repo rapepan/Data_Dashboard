@@ -524,3 +524,13 @@ describe('หน้าต่าง "มีอะไรใหม่" — จำ�
     expect((await get(cookie(userToken))).json()).toEqual({ seen: '0.2.0' });
   });
 });
+
+describe('รายชื่อผู้พัฒนา (หน้าติดต่อผู้พัฒนา)', () => {
+  it('ผู้เยี่ยมชมได้ 401 · login แล้วได้รายชื่อ', async () => {
+    expect((await app.inject({ method: 'GET', url: '/api/contact/people' })).statusCode).toBe(401);
+    const res = await app.inject({ method: 'GET', url: '/api/contact/people', headers: cookie(userToken) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().people.length).toBeGreaterThan(0);
+    expect(res.headers['cache-control']).toContain('no-store');
+  });
+});

@@ -7,16 +7,16 @@ export const DEVELOPER_TEAM = {
   lineQr: `${API_BASE}/contact/line-qr`,
 };
 
+/**
+ * รายชื่อ/เบอร์โทรผู้พัฒนา — เก็บฝั่ง backend (backend/src/config/developer-contacts.ts)
+ * หน้าเว็บขอมาเฉพาะตอน login แล้ว (GET /api/contact/people) ผู้เยี่ยมชมไม่เห็นแม้เปิด F12
+ */
 export interface DeveloperContact {
   name: string;
   role: string;
   phone: string;
   email: string;
   line: string;
-  /** แสดง QR Code LINE (DEVELOPER_TEAM.lineQr) ในการ์ดของคนนี้ — เห็นเฉพาะผู้ที่ login */
+  /** แสดง QR Code LINE (DEVELOPER_TEAM.lineQr) ในการ์ดของคนนี้ */
   lineQr?: boolean;
 }
-
-export const DEVELOPER_CONTACTS: DeveloperContact[] = [
-  { name: 'จิม', role: 'ผู้พัฒนาระบบ', phone: '098-276-9502', email: '', line: '', lineQr: true },
-];

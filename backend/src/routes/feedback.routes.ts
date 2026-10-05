@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { feedbackController } from '../controllers/feedback.controller';
 import { requireAuth } from '../middleware/auth';
+import { DEVELOPER_CONTACTS } from '../config/developer-contacts';
 
 const LINE_QR_FILE = path.resolve(__dirname, '../../assets/line-qr.jpg');
 
@@ -15,6 +16,11 @@ export async function feedbackRoutes(fastify: FastifyInstance) {
   fastify.get('/feedback/mine/summary', feedbackController.mineSummary);
   fastify.post('/feedback/mine/seen', feedbackController.mineSeen);
   fastify.get('/feedback/mine/:id/images/:file', feedbackController.mineImage);
+  // รายชื่อ / เบอร์โทรผู้พัฒนา — เฉพาะผู้ที่ login (ไม่ฝังไว้ในไฟล์หน้าเว็บ)
+  fastify.get('/contact/people', (_req, reply) => {
+    const people = DEVELOPER_CONTACTS.filter(c => c.name || c.phone || c.email || c.line);
+    return reply.header('Cache-Control', 'private, no-store').send({ people });
+  });
   // QR Code LINE ส่วนตัวของผู้พัฒนา — ไม่วางไว้ใน public ของหน้าเว็บ ให้เห็นเฉพาะผู้ที่ login
   // ไฟล์ไม่อยู่ใน git — เครื่องที่ยังไม่ได้วางไฟล์จะได้ 404 และหน้าเว็บซ่อนการ์ด LINE เอง
   fastify.get('/contact/line-qr', (_req, reply) => {

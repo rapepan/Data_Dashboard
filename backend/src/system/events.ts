@@ -55,7 +55,8 @@ export const systemEvents = {
     send(res, 'retry: 3000\n\n');
     send(res, `event: status\ndata: ${payload}\n\n`);
 
-    const heartbeat = setInterval(() => send(res, ': ping\n\n'), HEARTBEAT_MS);
+    // ส่งเป็น event (ไม่ใช่ comment) — หน้าเว็บรู้ว่าสายยังส่งข้อมูลถึงจริง (proxy บางตัวรับสายแต่พักข้อมูลไว้)
+    const heartbeat = setInterval(() => send(res, 'event: ping\ndata: 1\n\n'), HEARTBEAT_MS);
     heartbeat.unref();
     req.raw.on('close', () => {
       clearInterval(heartbeat);

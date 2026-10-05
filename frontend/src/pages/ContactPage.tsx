@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useLoginRedirect } from '../auth/useLoginRedirect';
 import PageHeader from '../components/PageHeader';
@@ -6,9 +6,9 @@ import PageSkeleton from '../components/PageSkeleton';
 import { useMinDelay } from '../hooks/useMinDelay';
 import Select from '../components/ui/Select';
 import { useAuth } from '../auth/AuthContext';
-import { DEVELOPER_CONTACTS, DEVELOPER_TEAM } from '../config/contact';
+import { DEVELOPER_TEAM, type DeveloperContact } from '../config/contact';
 import { NAV_GROUPS } from '../routes/navigation';
-import { ApiError } from '../services/apiClient';
+import { ApiError, apiGet } from '../services/apiClient';
 import { FEEDBACK_CATEGORY, feedbackService, type FeedbackCategory } from '../services/feedbackService';
 import ImageAttach, { type AttachedImage } from '../components/ImageAttach';
 import LineQrPicker from '../components/LineQrPicker';
@@ -54,7 +54,16 @@ export default function ContactPage() {
   const [error, setError] = useState<string | null>(null);
   const [sentId, setSentId] = useState<string | null>(null);
 
-  const contacts = DEVELOPER_CONTACTS.filter(c => c.name || c.phone || c.email || c.line);
+  // รายชื่อ/เบอร์โทรผู้พัฒนา — ขอจาก backend เฉพาะตอน login (ผู้เยี่ยมชมไม่เห็นการ์ดนี้ และไม่มีเบอร์อยู่ในไฟล์หน้าเว็บ)
+  const [contacts, setContacts] = useState<DeveloperContact[]>([]);
+  useEffect(() => {
+    if (!user) { setContacts([]); return; }
+    let cancelled = false;
+    apiGet<{ people: DeveloperContact[] }>('/contact/people')
+      .then(r => { if (!cancelled) setContacts(r.people); })
+      .catch(() => { /* ไม่แสดงการ์ด */ });
+    return () => { cancelled = true; };
+  }, [user]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -106,9 +115,9 @@ export default function ContactPage() {
               <ul className="contact-channels">
                 {person.phone && <li><i className="fa-solid fa-phone" /><a href={telHref(person.phone)}>{person.phone}</a></li>}
                 {person.email && <li><i className="fa-solid fa-envelope" /><a href={`mailto:${person.email}`}>{person.email}</a></li>}
-                {user && person.line && <li><i className="fa-brands fa-line" /><span>Line: {person.line}</span></li>}
+                {person.line && <li><i className="fa-brands fa-line" /><span>Line: {person.line}</span></li>}
               </ul>
-              {user && person.lineQr && DEVELOPER_TEAM.lineQr && (
+              {person.lineQr && DEVELOPER_TEAM.lineQr && (
                 <div className="contact-person-qr">
                   <img src={DEVELOPER_TEAM.lineQr} alt={`QR Code เพิ่มเพื่อน LINE ${person.name}`} onError={e => { e.currentTarget.closest('.contact-person-qr')?.setAttribute('hidden', ''); }} />
                   <div>

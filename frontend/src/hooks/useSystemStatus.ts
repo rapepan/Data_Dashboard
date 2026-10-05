@@ -79,32 +79,75 @@ export async function check() {
 let channel: BroadcastChannel | null = null;
 let stopLive: (() => void) | null = null;
 
-/** เปิด EventSource จริง (เฉพาะแท็บหัวหน้า หรือทุกแท็บถ้าเบราว์เซอร์ไม่รองรับการแบ่งกัน) · คืนฟังก์ชันปิด */
-function openEventSource() {
-  const source = new EventSource(EVENTS_URL, { withCredentials: true });
-  const alive = window.setInterval(() => {
-    if (source.readyState !== EventSource.OPEN) return;
-    liveAt = Date.now();
-    channel?.postMessage({ type: 'alive' } satisfies LiveMessage);
-  }, ALIVE_MS);
+/** ต่อได้แต่ไม่มีข้อมูลมาเลย (proxy พักข้อมูลไว้ เช่น Cloudflare quick tunnel) — นานเท่านี้ถือว่าใช้ไม่ได้ */
+const FIRST_DATA_MS = 10_000;
+/** server ส่ง ping ทุก 25 วินาที — เงียบเกินนี้ถือว่าสายค้าง */
+const STALL_MS = 80_000;
+/** ใช้ไม่ได้แล้วรอนานเท่านี้ค่อยลองต่อใหม่ (ระหว่างนั้นตรวจตามรอบ 1 นาที) */
+const REOPEN_MS = 5 * 60_000;
 
-  source.addEventListener('status', event => {
-    try {
-      const status = JSON.parse((event as MessageEvent<string>).data) as SystemStatus;
-      applyLive(status);
-      channel?.postMessage({ type: 'status', status } satisfies LiveMessage);
-    } catch { /* ข้อมูลเสีย — รอรอบถัดไป */ }
-  });
-  // หลุด (server รีสตาร์ท/ล่ม) — EventSource ต่อใหม่เองทุก 3 วินาที · ระหว่างนั้นตรวจทันทีเพื่อรู้ให้เร็วว่าล่มหรือไม่
-  source.onerror = () => {
+/**
+ * เปิด EventSource จริง (เฉพาะแท็บหัวหน้า หรือทุกแท็บถ้าเบราว์เซอร์ไม่รองรับการแบ่งกัน) · คืนฟังก์ชันปิด
+ * นับว่า "สด" เฉพาะเมื่อมีข้อมูลเข้ามาจริง (status / ping) — แค่ต่อติดไม่พอ เพราะ proxy บางตัวรับสายแต่พักข้อมูลไว้
+ */
+function openEventSource() {
+  let source: EventSource | null = null;
+  let lastData = 0;
+  let stopped = false;
+  let firstTimer: number | undefined;
+  let reopenTimer: number | undefined;
+
+  const markData = () => {
+    lastData = Date.now();
+    liveAt = lastData;
+    channel?.postMessage({ type: 'alive' } satisfies LiveMessage);
+  };
+  // ปิดเส้นที่ใช้ไม่ได้ → กลับไปตรวจตามรอบ แล้วค่อยลองใหม่ (ไม่ถือสายค้างไว้เปล่า ๆ)
+  const giveUp = () => {
+    if (!source) return; // เลิกไปแล้ว — กันตั้งเวลาลองใหม่ซ้อน
+    window.clearTimeout(firstTimer);
+    source.close();
+    source = null;
     liveAt = 0;
     channel?.postMessage({ type: 'down' } satisfies LiveMessage);
-    void check();
+    if (!stopped) reopenTimer = window.setTimeout(open, REOPEN_MS);
   };
 
+  function open() {
+    lastData = 0;
+    source = new EventSource(EVENTS_URL, { withCredentials: true });
+    source.addEventListener('status', event => {
+      try {
+        const status = JSON.parse((event as MessageEvent<string>).data) as SystemStatus;
+        markData();
+        applyLive(status);
+        channel?.postMessage({ type: 'status', status } satisfies LiveMessage);
+      } catch { /* ข้อมูลเสีย — รอรอบถัดไป */ }
+    });
+    source.addEventListener('ping', markData);
+    // หลุด (server รีสตาร์ท/ล่ม) — EventSource ต่อใหม่เองทุก 3 วินาที · ระหว่างนั้นตรวจทันทีเพื่อรู้ให้เร็วว่าล่มหรือไม่
+    // server ตอบไม่ใช่ 200 (เช่น 429 เต็ม) — EventSource เลิกต่อเอง (CLOSED) → ลองใหม่ภายหลัง
+    source.onerror = () => {
+      liveAt = 0;
+      channel?.postMessage({ type: 'down' } satisfies LiveMessage);
+      void check();
+      if (source?.readyState === EventSource.CLOSED) giveUp();
+    };
+    window.clearTimeout(firstTimer);
+    firstTimer = window.setTimeout(() => { if (!lastData) giveUp(); }, FIRST_DATA_MS);
+  }
+
+  open();
+  const stall = window.setInterval(() => {
+    if (source && lastData && Date.now() - lastData > STALL_MS) giveUp();
+  }, ALIVE_MS);
+
   return () => {
-    window.clearInterval(alive);
-    source.close();
+    stopped = true;
+    window.clearTimeout(firstTimer);
+    window.clearTimeout(reopenTimer);
+    window.clearInterval(stall);
+    source?.close();
   };
 }
 

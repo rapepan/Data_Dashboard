@@ -1,36 +1,71 @@
-import { lazy, type ReactNode } from 'react';
+import { lazy, useEffect, type ComponentType, type ReactNode } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { PageGuard } from '../auth/guards';
+import { useAuth } from '../auth/AuthContext';
 import LoginPage from '../pages/LoginPage';
 import DashboardPage from '../pages/DashboardPage';
-const OpdPage = lazy(() => import('../pages/OpdPage'));
-const IpdPage = lazy(() => import('../pages/IpdPage'));
-const ErPage = lazy(() => import('../pages/ErPage'));
-const QueuePage = lazy(() => import('../pages/QueuePage'));
-const Icd10SearchPage = lazy(() => import('../pages/Icd10SearchPage'));
-const DentalPage = lazy(() => import('../pages/DentalPage'));
-const PhysioPage = lazy(() => import('../pages/PhysioPage'));
-const TelemedicinePage = lazy(() => import('../pages/TelemedicinePage'));
-const ThaiMedicinePage = lazy(() => import('../pages/ThaiMedicinePage'));
-const ReadmitPage = lazy(() => import('../pages/ReadmitPage'));
-const ReferralPage = lazy(() => import('../pages/ReferralPage'));
-const DrugBudgetPage = lazy(() => import('../pages/DrugBudgetPage'));
-const AuditLogPage = lazy(() => import('../pages/admin/AuditLogPage'));
-const UsagePage = lazy(() => import('../pages/admin/UsagePage'));
-const FeedbackPage = lazy(() => import('../pages/admin/FeedbackPage'));
-const DataStatusPage = lazy(() => import('../pages/admin/DataStatusPage'));
-const UsersPage = lazy(() => import('../pages/admin/UsersPage'));
-const SystemPage = lazy(() => import('../pages/admin/SystemPage'));
-const ContactPage = lazy(() => import('../pages/ContactPage'));
-const PostalDrugPage = lazy(() => import('../pages/PostalDrugPage'));
-const MyFeedbackPage = lazy(() => import('../pages/MyFeedbackPage'));
 
-/* หน้าอื่นนอกจากหน้าแรกแยกไฟล์ — โหลดเมื่อเปิดหน้านั้นครั้งแรก (ไฟล์เริ่มต้นเล็กลง เปิดเว็บเร็วขึ้น) · ระหว่างโหลดแสดงโครงหน้า (Layout) */
+/*
+ * หน้าอื่นนอกจากหน้าแรกแยกไฟล์ (เปิดเว็บครั้งแรกเร็วขึ้น) แล้วทยอยโหลดเก็บไว้เบื้องหลังหลังหน้าแรกแสดงเสร็จ
+ * → เปลี่ยนหน้าไม่ต้องรอโหลดโค้ด เหลือรอแค่ข้อมูล (สำคัญเมื่อเข้าผ่านเครือข่ายที่หน่วง เช่น Forward port / เน็ตนอกโรงพยาบาล)
+ * หน้าผู้ดูแลโหลดล่วงหน้าเฉพาะผู้ดูแล
+ */
+type Loader = () => Promise<{ default: ComponentType }>;
+const loaders: { load: Loader; admin: boolean }[] = [];
+function lazyPage(load: Loader, admin = false) {
+  loaders.push({ load, admin });
+  return lazy(load);
+}
+let preloaded = { user: false, admin: false };
+function preloadPages(isAdmin: boolean) {
+  const todo = loaders.filter(l => (l.admin ? isAdmin && !preloaded.admin : !preloaded.user));
+  preloaded = { user: true, admin: preloaded.admin || isAdmin };
+  // ทีละ 3 หน้า — ไม่แย่งเครือข่ายกับข้อมูลของหน้าที่กำลังเปิด
+  const queue = [...todo];
+  const next = (): Promise<void> => {
+    const item = queue.shift();
+    return item ? item.load().catch(() => undefined).then(next) : Promise.resolve();
+  };
+  void Promise.all([next(), next(), next()]);
+}
+const OpdPage = lazyPage(() => import('../pages/OpdPage'));
+const IpdPage = lazyPage(() => import('../pages/IpdPage'));
+const ErPage = lazyPage(() => import('../pages/ErPage'));
+const QueuePage = lazyPage(() => import('../pages/QueuePage'));
+const Icd10SearchPage = lazyPage(() => import('../pages/Icd10SearchPage'));
+const DentalPage = lazyPage(() => import('../pages/DentalPage'));
+const PhysioPage = lazyPage(() => import('../pages/PhysioPage'));
+const TelemedicinePage = lazyPage(() => import('../pages/TelemedicinePage'));
+const ThaiMedicinePage = lazyPage(() => import('../pages/ThaiMedicinePage'));
+const ReadmitPage = lazyPage(() => import('../pages/ReadmitPage'));
+const ReferralPage = lazyPage(() => import('../pages/ReferralPage'));
+const DrugBudgetPage = lazyPage(() => import('../pages/DrugBudgetPage'));
+const AuditLogPage = lazyPage(() => import('../pages/admin/AuditLogPage'), true);
+const UsagePage = lazyPage(() => import('../pages/admin/UsagePage'), true);
+const FeedbackPage = lazyPage(() => import('../pages/admin/FeedbackPage'), true);
+const DataStatusPage = lazyPage(() => import('../pages/admin/DataStatusPage'), true);
+const UsersPage = lazyPage(() => import('../pages/admin/UsersPage'), true);
+const SystemPage = lazyPage(() => import('../pages/admin/SystemPage'), true);
+const ContactPage = lazyPage(() => import('../pages/ContactPage'));
+const PostalDrugPage = lazyPage(() => import('../pages/PostalDrugPage'));
+const MyFeedbackPage = lazyPage(() => import('../pages/MyFeedbackPage'));
 
 const guard = (page: string, element: ReactNode) => <PageGuard page={page}>{element}</PageGuard>;
 
 export default function AppRoutes() {
+  const { status, user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  useEffect(() => {
+    if (status !== 'ready') return;
+    // รอให้หน้าแรกโหลดข้อมูลเสร็จก่อน แล้วค่อยโหลดหน้าอื่นตอนเบราว์เซอร์ว่าง
+    const id = window.setTimeout(() => {
+      const run = () => preloadPages(isAdmin);
+      if ('requestIdleCallback' in window) window.requestIdleCallback(run, { timeout: 3000 }); else run();
+    }, 1500);
+    return () => window.clearTimeout(id);
+  }, [status, isAdmin]);
+
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
