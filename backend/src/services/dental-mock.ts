@@ -1,3 +1,5 @@
+import { fiscalSeries } from './fiscal-series';
+import { DENTAL_VISITS } from './fiscal-data';
 import type { DentalBreakdown, DentalReport } from '../types/reports.types';
 
 /**
@@ -57,9 +59,9 @@ export function generateDentalReport(start: string, end: string): DentalReport {
   const fyStartYear = endDate.getMonth() >= 9 ? endDate.getFullYear() : endDate.getFullYear() - 1;
 
   const monthLabels = ['ต.ค.', 'พ.ย.', 'ธ.ค.', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.'];
-  // ผู้ป่วยทันตกรรมรายเดือนจริง ต.ค.–ก.ย. × สัดส่วนหัตถการ
-  const MONTHLY_VISITS = [576, 542, 525, 525, 588, 620, 630, 581, 604, 621, 594, 517];
-  const monthly = CATEGORIES.map((_, ci) => MONTHLY_VISITS.map(v => jitter(v * PER_PATIENT[ci], 0.1)));
+  // ผู้ป่วยทันตกรรมรายเดือนจริง (dtmain) × สัดส่วนหัตถการ · เดือนที่ยังไม่ถึง = 0
+  const visits = fiscalSeries(fyStartYear, DENTAL_VISITS, end, 0);
+  const monthly = CATEGORIES.map((_, ci) => visits.map(v => jitter(v * PER_PATIENT[ci], 0.1)));
   const fiscalShare = monthly.map(series => series.reduce((a, b) => a + b, 0));
 
   return {

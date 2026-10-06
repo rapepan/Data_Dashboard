@@ -1582,7 +1582,7 @@ button.sidebar-footer.sidebar-login {
 .contact-count { align-self: flex-end; font-size: .72rem; color: var(--text-soft); }
 .contact-row { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem; }
 
-.category-picker { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .55rem; }
+.category-picker { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .55rem; }
 .category-option {
   display: flex; flex-direction: column; align-items: center; gap: .35rem;
   padding: .75rem .5rem; border-radius: 11px;
@@ -1688,6 +1688,7 @@ button.sidebar-footer.sidebar-login {
   background: #1e1b3a; color: #fff;
   font-size: .8rem; font-weight: 500; line-height: 1.5;
   text-align: center;
+  white-space: pre-line; /* data-tip ขึ้นบรรทัดใหม่ได้ */
   box-shadow: 0 10px 24px -8px rgba(30, 27, 58, .45);
   pointer-events: none;
   transform: translate(-50%, -100%);
@@ -2256,3 +2257,80 @@ button.presence-card:hover { border-color: #c7c4f5; }
 .usage-user { min-width: 190px; }
 .usage-user b { display: block; font-weight: 600; white-space: nowrap; }
 .usage-user small { display: block; line-height: 1.35; }
+
+/* ยืนยันข้อมูล (ฟอร์มติดต่อผู้พัฒนา) */
+.confirm-hint { margin: 0; display: flex; align-items: flex-start; gap: .5rem; padding: .65rem .85rem; border-radius: 10px; background: #fbf0fd; color: var(--text); font-size: .86rem; line-height: 1.5; }
+.confirm-hint i { color: var(--plum); margin-top: .2rem; }
+
+/* การ์ดสรุป "หน้าที่ได้รับการยืนยันข้อมูลแล้ว" (หน้าแจ้งปัญหา ผู้ดูแล) */
+.confirm-summary { padding: 1rem 1.15rem; margin-bottom: 1rem; }
+.confirm-summary header { display: flex; align-items: center; gap: .75rem; margin-bottom: .85rem; }
+.confirm-summary header > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .1rem; }
+.confirm-summary header small { color: var(--text-muted); font-size: .78rem; }
+.confirm-summary-icon { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; background: #fbf0fd; color: var(--plum); font-size: 1.1rem; flex: none; }
+.confirm-summary-count { font-size: .85rem; color: var(--text-muted); white-space: nowrap; }
+.confirm-summary-count b { font-size: 1.35rem; color: var(--plum); }
+.confirm-pages { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: .5rem; }
+.confirm-pages li { display: flex; align-items: flex-start; gap: .55rem; padding: .55rem .7rem; border: 1px dashed var(--border); border-radius: 9px; min-width: 0; }
+.confirm-pages li.is-done { border-style: solid; border-color: #ead1f2; background: #fdf7fe; }
+.confirm-pages li > div { display: flex; flex-direction: column; gap: .1rem; min-width: 0; }
+.confirm-page-icon { width: 1.1rem; text-align: center; margin-top: .2rem; color: var(--text-soft); }
+.confirm-pages li.is-done .confirm-page-icon { color: var(--plum); }
+.confirm-page-name { font-size: .85rem; font-weight: 600; }
+.confirm-pages small { font-size: .76rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.confirm-pages li.is-done small { color: var(--plum); }
+
+/* กายภาพบำบัด: ค่ารักษาเบิกได้ / เก็บเงิน */
+.revenue-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem; margin-bottom: .9rem; }
+.revenue-tile { display: flex; flex-direction: column; gap: .15rem; padding: .7rem .85rem; border-radius: 10px; background: var(--bg); min-width: 0; }
+.revenue-tile small { font-size: .78rem; color: var(--text-muted); }
+.revenue-tile b { font-size: 1.15rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.revenue-tile span { font-size: .76rem; color: var(--text-muted); }
+.revenue-tile.claim { background: #eef0ff; } .revenue-tile.claim b, .revenue-tile.claim small i { color: #4f46e5; }
+.revenue-tile.selfpay { background: #fffaeb; } .revenue-tile.selfpay b, .revenue-tile.selfpay small i { color: #b45309; }
+.revenue-table tfoot td { font-weight: 700; border-top: 2px solid var(--border); background: var(--bg); padding: .5rem; }
+.revenue-badge { display: inline-block; padding: .1rem .5rem; border-radius: 999px; font-size: .72rem; font-weight: 600; white-space: nowrap; }
+.revenue-badge.claim { background: #eef0ff; color: #4f46e5; }
+.revenue-badge.selfpay { background: #fffaeb; color: #b45309; }
+@media (max-width: 576px) { .revenue-tiles { grid-template-columns: minmax(0, 1fr); } }
+.revenue-switches { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem; margin-bottom: .8rem; }
+
+/* หน้า login: เตือนแป้นพิมพ์ภาษาไทย / Caps Lock */
+.login-hint { display: flex; align-items: center; gap: .35rem; margin-top: .35rem; font-size: .78rem; color: var(--indigo); }
+.login-hint.warn { color: #b45309; }
+.login-hint .login-typed { font-family: 'JetBrains Mono', monospace; font-size: .9rem; padding: 0 .3rem; border-radius: 4px; background: #fff7ed; letter-spacing: .05em; }
+
+/* เมนูย่อย (พับ/กาง) */
+.nav-parent-toggle { width: 100%; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; }
+.nav-parent-caret { margin-left: auto; width: auto !important; font-size: .7rem !important; transition: transform .2s ease; }
+.nav-parent.open .nav-parent-caret { transform: rotate(180deg); }
+.nav-parent.has-active > .nav-parent-toggle { color: var(--primary); }
+.nav-parent.has-active > .nav-parent-toggle > i:first-child { color: var(--primary); }
+/* ยืด/หดนุ่ม ๆ: grid 0fr → 1fr (สูงเท่าเนื้อหาจริง ไม่ต้องกำหนดความสูงตายตัว) */
+.nav-children-wrap { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .28s ease; }
+.nav-parent.open > .nav-children-wrap { grid-template-rows: 1fr; }
+.nav-children { display: flex; flex-direction: column; min-height: 0; overflow: hidden; opacity: 0; transform: translateY(-4px); transition: opacity .2s ease, transform .28s ease; }
+.nav-parent.open .nav-children { opacity: 1; transform: none; }
+.nav-parent-caret { transition: transform .28s ease !important; }
+@media (prefers-reduced-motion: reduce) { .nav-children-wrap, .nav-children, .nav-parent-caret { transition: none !important; } }
+@media (min-width: 992px) {
+  .sidebar.collapsed .nav-children-wrap { grid-template-rows: 1fr; }
+  .sidebar.collapsed .nav-children { opacity: 1; transform: none; }
+}
+.nav-link.nav-child { padding-left: 2.35rem; font-size: .86rem; }
+.nav-link.nav-child i { font-size: .85rem; }
+.nav-wip { margin-left: auto; font-style: normal; font-size: .62rem; font-weight: 600; padding: .05rem .4rem; border-radius: 999px; background: #fff7ed; color: #b45309; white-space: nowrap; }
+@media (min-width: 992px) {
+  .sidebar.collapsed .nav-parent-toggle { display: none; }
+  .sidebar.collapsed .nav-link.nav-child { padding-left: 0; }
+  .sidebar.collapsed .nav-link.nav-child i { font-size: 1.2rem; }
+  .sidebar.collapsed .nav-wip { display: none; }
+}
+
+/* ปริมาณการใช้ยา: ผู้ป่วยรับยา / ทุน-ขาย */
+.grid-3 { display: grid; gap: 1rem; margin-bottom: 1rem; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1200px) { .grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 576px) { .grid-3 { grid-template-columns: minmax(0, 1fr); } }
+.drug-patient-note { margin: -.4rem 0 1rem; }
+.drug-money-note { margin-bottom: 1rem; }
+.report-table .num.loss { color: var(--rose); font-weight: 600; }

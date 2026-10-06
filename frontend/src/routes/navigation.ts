@@ -1,4 +1,9 @@
-import type { NavGroup } from '../types/nav';
+import type { NavGroup, NavParent } from '../types/nav';
+
+/** หัวเมนูย่อย — รายการที่มี parent เดียวกันจะรวมอยู่ใต้หัวนี้ (ต้องอยู่ติดกันในกลุ่ม) */
+export const NAV_PARENTS: Record<string, NavParent> = {
+  telehealth: { label: 'การแพทย์ทางไกล', icon: 'fa-headset' },
+};
 
 /** class ของไอคอนเมนู (Font Awesome แบบ solid, กว้างเท่ากันทุกตัว) — ทั้งระบบใช้ Font Awesome */
 export function navIconClass(icon: string) {
@@ -20,8 +25,9 @@ export const NAV_GROUPS: NavGroup[] = [
     { key: 'stroke', path: '/stroke-unit', icon: 'fa-brain', label: 'Stroke Unit (สมอง)', hidden: true },
     { key: 'dental', path: '/dental', icon: 'fa-tooth', label: 'ทันตกรรม (Dental)' },
     { key: 'physio', path: '/physio', icon: 'fa-wheelchair', label: 'กายภาพบำบัด (Physio)' },
-    { key: 'tele', path: '/telemedicine', icon: 'fa-laptop-medical', label: 'การแพทย์ทางไกล (Tele)' },
-    { key: 'postal', path: '/postal-drug', icon: 'fa-truck-fast', label: 'การส่งยาทางไปรษณีย์' },
+    { key: 'tele', path: '/telemedicine', icon: 'fa-video', label: 'Telemedicine', parent: 'telehealth' },
+    { key: 'teleframe', page: 'tele', path: '/teleframe', icon: 'fa-display', label: 'Teleframe', parent: 'telehealth', wip: true },
+    { key: 'postal', path: '/postal-drug', icon: 'fa-truck-fast', label: 'การส่งยาทางไปรษณีย์', parent: 'telehealth' },
     { key: 'thaimed', path: '/thai-medicine', icon: 'fa-leaf', label: 'แพทย์แผนไทย / แผนจีน (TTCM)' },
     { key: 'drugbudget', path: '/drug-budget', icon: 'fa-pills', label: 'ปริมาณการใช้ยา (Drug)' },
   ]},

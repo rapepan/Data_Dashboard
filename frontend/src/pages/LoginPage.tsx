@@ -1,8 +1,9 @@
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type KeyboardEvent } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { ApiError } from "../services/apiClient";
 import AppFooter from "../components/AppFooter";
+import { hasThai, visibleThai } from "../utils/thaiKeyboard";
 
 export default function LoginPage() {
   const { user, login, notice } = useAuth();
@@ -12,6 +13,11 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // ลืมเปลี่ยนแป้นพิมพ์เป็นภาษาอังกฤษ / เปิด Caps Lock — เตือนอย่างเดียว ไม่แปลงให้
+  const [capsLock, setCapsLock] = useState(false);
+  const nameThai = hasThai(loginname);
+  const passwordThai = hasThai(password);
+  const checkCaps = (e: KeyboardEvent<HTMLInputElement>) => setCapsLock(e.getModifierState("CapsLock"));
 
   const from = (location.state as { from?: string } | null)?.from || "/";
   if (user) return <Navigate to={from === "/login" ? "/" : from} replace />;
@@ -23,9 +29,14 @@ export default function LoginPage() {
     try {
       await login(loginname.trim(), password);
     } catch (err) {
+      // รหัสผิด + พิมพ์ภาษาไทย / เปิด Caps Lock อยู่ → บอกสาเหตุที่น่าจะเป็น
+      const hint =
+        err instanceof ApiError && err.status === 401 && (nameThai || passwordThai || capsLock)
+          ? ` — ${[(nameThai || passwordThai) && "พิมพ์เป็นตัวอักษรไทย", capsLock && "เปิด Caps Lock อยู่"].filter(Boolean).join(" และ")} ตรวจแป้นพิมพ์แล้วลองใหม่`
+          : "";
       setError(
         err instanceof ApiError
-          ? err.message
+          ? err.message + hint
           : "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่อีกครั้ง",
       );
       setPassword("");
@@ -72,12 +83,22 @@ export default function LoginPage() {
             <input
               value={loginname}
               onChange={(e) => setLoginname(e.target.value)}
+              onKeyDown={checkCaps}
+              onKeyUp={checkCaps}
               autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
               placeholder="ชื่อผู้ใช้ "
               autoFocus
               required
             />
           </div>
+          {nameThai && (
+            <small className="login-hint warn" role="status">
+              <i className="fa-solid fa-triangle-exclamation" />
+              <span>แป้นพิมพ์เป็นภาษาไทยอยู่ — ที่พิมพ์ไว้คือ <b className="login-typed">{visibleThai(loginname)}</b> ลบแล้วเปลี่ยนเป็นภาษาอังกฤษก่อนพิมพ์</span>
+            </small>
+          )}
         </label>
 
         <label className="login-field">
@@ -88,6 +109,8 @@ export default function LoginPage() {
               type={showPassword ? "text" : "password"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={checkCaps}
+              onKeyUp={checkCaps}
               autoComplete="current-password"
               placeholder="รหัสผ่าน"
               required
@@ -101,6 +124,12 @@ export default function LoginPage() {
               <i className={`fa-solid ${showPassword ? "fa-eye-slash" : "fa-eye"}`} />
             </button>
           </div>
+          {(passwordThai || capsLock) && (
+            <small className="login-hint warn" role="status">
+              <i className="fa-solid fa-triangle-exclamation" />{" "}
+              {[passwordThai && "แป้นพิมพ์เป็นภาษาไทยอยู่", capsLock && "Caps Lock เปิดอยู่"].filter(Boolean).join(" · ")}
+            </small>
+          )}
         </label>
 
         <button type="submit" className="login-submit" disabled={submitting}>

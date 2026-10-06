@@ -53,6 +53,27 @@ function toReporterView(e: FeedbackEntry) {
   };
 }
 
+const CONFIRM_MESSAGE = 'ตรวจสอบแล้ว ใช้ข้อมูลตามที่ระบบแสดงอยู่ ไม่ต้องแก้ไข';
+
+/** หน้าที่มีคนยืนยันข้อมูลแล้ว — ล่าสุดก่อน · คนเดิมยืนยันซ้ำนับครั้งเดียว (แสดงครั้งล่าสุด) */
+function summarizeConfirmations(all: FeedbackEntry[]) {
+  const byPage = new Map<string, { page: string; count: number; last: string; people: { name: string; position: string; time: string }[] }>();
+  for (const e of all) {
+    if (e.category !== 'confirm') continue;
+    const item = byPage.get(e.page) ?? { page: e.page, count: 0, last: e.time, people: [] };
+    item.count++;
+    if (e.time > item.last) item.last = e.time;
+    const who = e.name ?? e.loginname ?? 'ไม่ระบุชื่อ';
+    const seen = item.people.find(p => p.name === who);
+    if (!seen) item.people.push({ name: who, position: e.position ?? '', time: e.time });
+    else if (e.time > seen.time) seen.time = e.time;
+    byPage.set(e.page, item);
+  }
+  return [...byPage.values()]
+    .map(p => ({ ...p, people: p.people.sort((a, b) => b.time.localeCompare(a.time)) }))
+    .sort((a, b) => b.last.localeCompare(a.last));
+}
+
 const badRequest = (reply: FastifyReply, message: string) =>
   reply.status(400).send({ statusCode: 400, error: 'Bad Request', message });
 
@@ -62,8 +83,12 @@ export const feedbackController = {
     const user = currentUser(req);
     if (!user) return reply.status(401).send({ statusCode: 401, error: 'Unauthorized', message: 'กรุณาเข้าสู่ระบบก่อนแจ้งปัญหา' });
     const category = clean(req.body?.category, 20) as FeedbackCategory;
-    const message = clean(req.body?.message, 5000);
     if (!FEEDBACK_CATEGORIES.includes(category)) return badRequest(reply, 'กรุณาเลือกประเภท');
+    // ยืนยันข้อมูล: ต้องเลือกหน้าที่ยืนยัน · ข้อความไม่บังคับ (ไม่กรอก = ข้อความมาตรฐาน) · ไม่รับรูปแนบ
+    const confirming = category === 'confirm';
+    const page = clean(req.body?.page, 80);
+    if (confirming && (!page || page.startsWith('ทั่วไป'))) return badRequest(reply, 'กรุณาเลือกหน้าที่ต้องการยืนยันข้อมูล');
+    const message = clean(req.body?.message, 5000) || (confirming ? CONFIRM_MESSAGE : '');
     if (message.length < 5) return badRequest(reply, 'กรุณาเล่ารายละเอียดอย่างน้อย 5 ตัวอักษร');
 
     const name = user.displayName;
@@ -79,7 +104,7 @@ export const feedbackController = {
     let images: ReturnType<typeof parseImages>;
     let lineQr: ReturnType<typeof parseImages>[number] | undefined;
     try {
-      images = parseImages(req.body?.images);
+      images = confirming ? [] : parseImages(req.body?.images);
       lineQr = req.body?.lineQr ? parseImages([req.body.lineQr])[0] : undefined;
     } catch (error) {
       if (error instanceof ImageError) return badRequest(reply, error.message.replace('รูปที่ 1', 'QR Code LINE'));
@@ -97,8 +122,10 @@ export const feedbackController = {
     try {
       saved = await feedbackStore.add({
         category,
-        page: clean(req.body?.page, 80) || 'ทั่วไป',
+        page: page || 'ทั่วไป',
         message,
+        // ยืนยันข้อมูลไม่มีอะไรต้องแก้ — ปิดเรื่องทันที (ไม่ค้างในกระดิ่งผู้ดูแล)
+        ...(confirming ? { status: 'done' as const } : {}),
         name,
         position,
         contact,
@@ -133,11 +160,12 @@ export const feedbackController = {
     return { ok: true, id: saved.id };
   },
 
-  /** ผู้ดูแลระบบ: รายการทั้งหมด */
+  /** ผู้ดูแลระบบ: รายการทั้งหมด + สรุปการยืนยันข้อมูลรายหน้า */
   async list(req: FastifyRequest<{ Querystring: { status?: string } }>) {
     const status = FEEDBACK_STATUSES.includes(req.query.status as FeedbackStatus) ? (req.query.status as FeedbackStatus) : undefined;
     const all = await feedbackStore.list();
     return {
+      confirmations: summarizeConfirmations(all),
       entries: status ? all.filter(e => e.status === status) : all,
       counts: {
         all: all.length,

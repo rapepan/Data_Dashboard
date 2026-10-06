@@ -16,6 +16,8 @@ export interface ReportSeries {
   fill?: boolean;
   /** เส้นประ (ใช้กับเส้นรองที่ค่าน้อย) */
   dashed?: boolean;
+  /** right = ใช้แกนขวา (เช่น เส้น % คู่กับแท่งจำนวน) — ตั้งชื่อแกนที่ ReportChart.rightAxis */
+  axis?: 'right';
 }
 
 interface ReportChartProps {
@@ -36,10 +38,12 @@ interface ReportChartProps {
   printTable?: PrintTableMode;
   /** หัวคอลัมน์แรกของตารางที่พิมพ์ (เช่น "เดือน") */
   printCategory?: string;
+  /** แกนขวาสำหรับ series ที่ axis = right (เช่น %) — suffix ต่อท้ายตัวเลขบนแกน */
+  rightAxis?: { suffix?: string; min?: number; max?: number };
 }
 
 /** กราฟแท่ง/เส้น/ผสม ที่ใช้ร่วมกันในหน้ารายงาน */
-export default function ReportChart({ labels, series, stacked, height = 260, showLegend = true, highlightIndex, highlightColor = '#e11d48', showValues, horizontal, printTable = 'sum', printCategory }: ReportChartProps) {
+export default function ReportChart({ labels, series, stacked, height = 260, showLegend = true, highlightIndex, highlightColor = '#e11d48', showValues, horizontal, printTable = 'sum', printCategory, rightAxis }: ReportChartProps) {
   const datasets = series.map(s => {
     const isLine = s.type === 'line';
     const barColors = !isLine && highlightIndex !== undefined
@@ -60,6 +64,7 @@ export default function ReportChart({ labels, series, stacked, height = 260, sho
       borderRadius: isLine ? 0 : 4,
       maxBarThickness: 34,
       order: isLine ? 0 : 1,
+      ...(s.axis === 'right' ? { yAxisID: 'y1' } : {}),
     };
   });
 
@@ -134,6 +139,12 @@ export default function ReportChart({ labels, series, stacked, height = 260, sho
             : {
                 x: { stacked, grid: { display: false }, ticks: { color: '#64748b', font: { size: 11 } } },
                 y: { stacked, beginAtZero: true, grid: { color: '#eef2f7' }, border: { display: false }, ticks: { color: '#64748b', font: { size: 11 }, precision: 0 } },
+                ...(series.some(x => x.axis === 'right') ? {
+                  y1: {
+                    position: 'right' as const, stacked: false, min: rightAxis?.min, max: rightAxis?.max, grid: { display: false }, border: { display: false },
+                    ticks: { color: '#64748b', font: { size: 11 }, callback: (v: string | number) => `${v}${rightAxis?.suffix ?? ''}` },
+                  },
+                } : {}),
               },
         }}
       />

@@ -1,4 +1,6 @@
 import type { TelemedicineReport } from '../types/reports.types';
+import { fiscalSeries } from './fiscal-series';
+import { TELE_VISITS } from './fiscal-data';
 
 /**
  * ข้อมูลจำลองหน้าการแพทย์ทางไกล — ใช้ระหว่างยังไม่ดึงจาก HOSxP
@@ -7,9 +9,8 @@ import type { TelemedicineReport } from '../types/reports.types';
 const MONTHS = ['ต.ค.', 'พ.ย.', 'ธ.ค.', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.'];
 /**
  * อิง HOSxP รพ.บางเสาธง (ตรวจเมื่อ 30/09/2569, ย้อนหลัง 12 เดือน) — visit แผนก 055 (Telehealth / Telemedicine)
- * ครั้งรายเดือนปีงบ 2569 จริง: ใช้น้อยช่วงต้นปี แล้วเพิ่มขึ้นมากตั้งแต่ มิ.ย. (สูงสุด ส.ค. 237 ครั้ง)
+ * ครั้งรายเดือนจริง (fiscal-data.ts): ใช้น้อยช่วงต้นปีงบ 2569 แล้วเพิ่มขึ้นมากตั้งแต่ มิ.ย. (สูงสุด ส.ค. 237 ครั้ง) · ต.ค. 2569 ~27 ครั้งใน 5 วัน
  */
-const MONTH_BASE = [4, 6, 13, 4, 1, 3, 5, 11, 51, 78, 237, 72];
 /** คลินิกของนัดที่ผูกกับ visit (oapp.visit_vn → clinic) 12 เดือน: ส่วนใหญ่ไม่ได้ผูกนัดคลินิก 397 / 489 ครั้ง */
 const CLINICS: [string, number][] = [['ไม่ระบุคลินิก', 397 / 489], ['Telemedicine', 53 / 489], ['ตรวจโรคทั่วไป', 20 / 489], ['โรคความดัน(HT)', 9 / 489], ['โรคไขมันในเลือดสูง', 4 / 489], ['อื่น ๆ', 6 / 489]];
 
@@ -29,10 +30,8 @@ export function generateTelemedicineReport(start: string, end: string): Telemedi
   const fyStartYear = endDate.getMonth() >= 9 ? endDate.getFullYear() : endDate.getFullYear() - 1;
   // เดือนในปีงบประมาณ (ต.ค. = 0) ของวันสิ้นสุด — เดือนหลังจากนั้นยังไม่เกิดขึ้น
   const currentFyMonth = (endDate.getMonth() + 3) % 12;
-  const monthly = MONTH_BASE.map((v, i) => (i > currentFyMonth ? 0 : jitter(v)));
-  // เดือนปัจจุบันนับถึงวันสิ้นสุด
-  const daysInMonth = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0).getDate();
-  monthly[currentFyMonth] = Math.round(monthly[currentFyMonth] * (endDate.getDate() / daysInMonth));
+  // ยอดจริงรายเดือน · เดือนของวันสิ้นสุดนับถึงวันนั้น · เดือนที่ยังไม่ถึง = 0
+  const monthly = fiscalSeries(fyStartYear, TELE_VISITS, end, 0.08);
 
   const workdays = workdaysBetween(start, end);
   const perDay = monthly[currentFyMonth] / Math.max(1, workdaysBetween(`${end.slice(0, 8)}01`, end));

@@ -33,6 +33,7 @@ function describe(user: SessionUser | null) {
 export const authController = {
   async login(req: FastifyRequest<{ Body: LoginBody }>, reply: FastifyReply) {
     // ชื่อผู้ใช้ใน HOSxP ไม่ยาวเกิน 64 ตัว — ตัดไว้ก่อนบันทึกประวัติ/นับ login ผิด
+    // ชื่อผู้ใช้ใน HOSxP ไม่ยาวเกิน 64 ตัว — ตัดไว้ก่อนบันทึกประวัติ/นับ login ผิด
     const loginname = String(req.body?.loginname ?? '').trim().slice(0, 64);
     const password = String(req.body?.password ?? '');
     if (!loginname || !password) {

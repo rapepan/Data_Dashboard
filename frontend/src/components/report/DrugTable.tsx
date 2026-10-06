@@ -3,7 +3,7 @@ import type { DrugItem } from '../../types/reports';
 import { formatNumber } from '../../utils/format';
 import TopLimitSelect from './TopLimitSelect';
 
-type SortKey = 'qty' | 'value';
+type SortKey = 'qty' | 'value' | 'cost';
 
 interface DrugTableProps {
   /** ed = ในบัญชียาหลักแห่งชาติ — มีค่านี้แล้วแสดงคอลัมน์ บัญชียา */
@@ -12,33 +12,41 @@ interface DrugTableProps {
   searchPlaceholder: string;
   /** สีตัวเลขจำนวนชิ้น */
   accent: string;
+  /** false = ผู้เยี่ยมชม — ไม่แสดงราคา (แสดงแค่จำนวนชิ้น) */
+  showMoney?: boolean;
 }
 
 const money = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /** ตารางอันดับยา — สลับเรียงตามจำนวนชิ้น / มูลค่า เลือก Top N และค้นหาชื่อหรือรหัสยาได้ */
-export default function DrugTable({ items, nameLabel, searchPlaceholder, accent }: DrugTableProps) {
+export default function DrugTable({ items, nameLabel, searchPlaceholder, accent, showMoney = true }: DrugTableProps) {
   const [sort, setSort] = useState<SortKey>('qty');
+  // มีราคาทุน (หน้าปริมาณการใช้ยา) → แยก ทุน / ขาย / ส่วนต่าง · ไม่มี (หน้าแผนไทย) → มูลค่ารวมคอลัมน์เดียวเหมือนเดิม
+  const hasCost = showMoney && items.some(item => item.cost !== undefined);
+  const sortKey: SortKey = showMoney ? sort : 'qty';
   const [limit, setLimit] = useState(10);
   const [query, setQuery] = useState('');
   const hasUnit = items.some(item => item.unit);
   const hasEd = items.some(item => item.ed !== undefined);
-  const columns = 5 + (hasUnit ? 1 : 0) + (hasEd ? 1 : 0);
+  const columns = 4 + (showMoney ? (hasCost ? 3 : 1) : 0) + (hasUnit ? 1 : 0) + (hasEd ? 1 : 0);
 
   const rows = useMemo(() => {
     // อันดับคิดจากทั้งหมดตามเกณฑ์ที่เลือก แล้วค่อยกรองคำค้น — อันดับไม่เปลี่ยนตามคำค้น
-    const ranked = [...items].sort((a, b) => b[sort] - a[sort]).map((item, i) => ({ ...item, rank: i + 1 }));
+    const ranked = [...items].sort((a, b) => (b[sortKey] ?? 0) - (a[sortKey] ?? 0)).map((item, i) => ({ ...item, rank: i + 1 }));
     const q = query.trim().toLowerCase();
     return (q ? ranked.filter(d => d.name.toLowerCase().includes(q) || d.code.includes(q)) : ranked).slice(0, limit);
-  }, [items, sort, query, limit]);
+  }, [items, sortKey, query, limit]);
 
   return (
     <div className="rank-block" style={{ ['--kind' as string]: accent }}>
       <div className="rank-tools no-print">
-        <div className="segmented">
-          <button className={sort === 'qty' ? 'active' : ''} onClick={() => setSort('qty')}>จำนวนชิ้น (Qty)</button>
-          <button className={sort === 'value' ? 'active' : ''} onClick={() => setSort('value')}>มูลค่ารวม (บาท)</button>
-        </div>
+        {showMoney && (
+          <div className="segmented">
+            <button className={sort === 'qty' ? 'active' : ''} onClick={() => setSort('qty')}>จำนวนชิ้น (Qty)</button>
+            {hasCost && <button className={sort === 'cost' ? 'active' : ''} onClick={() => setSort('cost')}>ราคาทุน</button>}
+            <button className={sort === 'value' ? 'active' : ''} onClick={() => setSort('value')}>{hasCost ? 'ราคาขาย' : 'มูลค่ารวม (บาท)'}</button>
+          </div>
+        )}
         <label className="table-search"><i className="fa-solid fa-magnifying-glass" /><input value={query} onChange={e => setQuery(e.target.value)} placeholder={searchPlaceholder} /></label>
         <TopLimitSelect value={limit} onChange={setLimit} />
       </div>
@@ -46,7 +54,7 @@ export default function DrugTable({ items, nameLabel, searchPlaceholder, accent 
       <div className="table-responsive">
       <table className="report-table rank-list">
         <thead>
-          <tr><th className="center">อันดับ</th><th>รหัสยา</th><th>{nameLabel}</th>{hasEd && <th className="center">บัญชียา</th>}{hasUnit && <th className="center">หน่วยนับ</th>}<th className="num">จำนวน (ชิ้น)</th><th className="num">มูลค่ารวม (บาท)</th></tr>
+          <tr><th className="center">อันดับ</th><th>รหัสยา</th><th>{nameLabel}</th>{hasEd && <th className="center">บัญชียา</th>}{hasUnit && <th className="center">หน่วยนับ</th>}<th className="num">จำนวน (ชิ้น)</th>{hasCost ? <><th className="num">ราคาทุน (บาท)</th><th className="num">ราคาขาย (บาท)</th><th className="num">ส่วนต่าง (บาท)</th></> : showMoney && <th className="num">มูลค่ารวม (บาท)</th>}</tr>
         </thead>
         <tbody>
           {rows.map(row => (
@@ -56,8 +64,14 @@ export default function DrugTable({ items, nameLabel, searchPlaceholder, accent 
               <td>{row.name}</td>
               {hasEd && <td className="center"><span className={`ed-badge${row.ed ? '' : ' ned'}`} data-x={row.ed ? 'ในบัญชี' : 'นอกบัญชี'}>{row.ed ? 'ในบัญชี' : 'นอกบัญชี'}</span></td>}
               {hasUnit && <td className="center muted">{row.unit}</td>}
-              <td className={`num${sort === 'qty' ? ' emphasis' : ''}`}>{formatNumber(row.qty)}</td>
-              <td className={`num${sort === 'value' ? ' emphasis' : ''}`}>{money.format(row.value)} ฿</td>
+              <td className={`num${sortKey === 'qty' ? ' emphasis' : ''}`}>{formatNumber(row.qty)}</td>
+              {hasCost ? (
+                <>
+                  <td className={`num${sortKey === 'cost' ? ' emphasis' : ''}`}>{money.format(row.cost ?? 0)}</td>
+                  <td className={`num${sortKey === 'value' ? ' emphasis' : ''}`}>{money.format(row.value)}</td>
+                  <td className={`num${row.value - (row.cost ?? 0) < 0 ? ' loss' : ' muted'}`}>{money.format(row.value - (row.cost ?? 0))}</td>
+                </>
+              ) : showMoney && <td className={`num${sortKey === 'value' ? ' emphasis' : ''}`}>{money.format(row.value)} ฿</td>}
             </tr>
           ))}
           {rows.length === 0 && <tr><td colSpan={columns} className="empty">ไม่พบรายการยาที่ค้นหา</td></tr>}

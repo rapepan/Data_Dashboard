@@ -125,10 +125,18 @@ export function generateIpdReport(start: string, end: string): IpdReport {
   const totalBeds = wards.reduce((sum, w) => sum + w.beds, 0);
   const usedBeds = wards.reduce((sum, w) => sum + w.used, 0);
 
-  // admit / จำหน่าย รายเดือนจริง (ม.ค.–ก.ย. 2569) · ผู้ป่วยคงค้าง ≈ admit × LOS ÷ 30
-  const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.'];
-  const admissions = [181, 175, 184, 118, 169, 161, 168, 195, 156].map(v => jitter(v, 0.03));
-  const discharges = [177, 167, 187, 130, 149, 171, 165, 198, 150].map(v => jitter(v, 0.03));
+  // admit / จำหน่าย รายเดือนจริง 9 เดือนล่าสุดนับถึงเดือนของวันสิ้นสุด (real-series) · เดือนสุดท้ายนับถึงวันสิ้นสุด
+  // ผู้ป่วยคงค้าง ≈ admit × LOS ÷ 30
+  const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+  const endDay = new Date(`${end}T00:00:00`);
+  const trendMonths = Array.from({ length: 9 }, (_, i) => new Date(endDay.getFullYear(), endDay.getMonth() - 8 + i, 1));
+  const monthValue = (series: Record<string, number | null>, d: Date, last: boolean, fallback: number) => {
+    const v = series[`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`] ?? fallback;
+    return jitter(last ? (v * endDay.getDate()) / new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate() : v, 0.03);
+  };
+  const months = trendMonths.map(d => TH_MONTHS[d.getMonth()]);
+  const admissions = trendMonths.map((d, i) => monthValue(SERIES.admit, d, i === 8, 168));
+  const discharges = trendMonths.map((d, i) => monthValue(SERIES.discharge, d, i === 8, 167));
   const current = admissions.map((v, i) => (i === admissions.length - 1 ? usedBeds : jitter((v * 3.67) / 30, 0.08)));
 
   const statusCounts: [string, number][] = [['รักษาต่อเนื่อง', 0.659], ['รอจำหน่าย', 0.159], ['รอผลตรวจ', 0.093], ['รอปรึกษาแพทย์', 0.058], ['อื่น ๆ', 0.031]];

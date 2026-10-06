@@ -11,9 +11,9 @@ import DashboardPage from '../pages/DashboardPage';
  * → เปลี่ยนหน้าไม่ต้องรอโหลดโค้ด เหลือรอแค่ข้อมูล (สำคัญเมื่อเข้าผ่านเครือข่ายที่หน่วง เช่น Forward port / เน็ตนอกโรงพยาบาล)
  * หน้าผู้ดูแลโหลดล่วงหน้าเฉพาะผู้ดูแล
  */
-type Loader = () => Promise<{ default: ComponentType }>;
-const loaders: { load: Loader; admin: boolean }[] = [];
-function lazyPage(load: Loader, admin = false) {
+const loaders: { load: () => Promise<unknown>; admin: boolean }[] = [];
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- รับหน้าที่มี props ได้ (เช่น PlaceholderPage)
+function lazyPage<T extends ComponentType<any>>(load: () => Promise<{ default: T }>, admin = false) {
   loaders.push({ load, admin });
   return lazy(load);
 }
@@ -49,6 +49,7 @@ const UsersPage = lazyPage(() => import('../pages/admin/UsersPage'), true);
 const SystemPage = lazyPage(() => import('../pages/admin/SystemPage'), true);
 const ContactPage = lazyPage(() => import('../pages/ContactPage'));
 const PostalDrugPage = lazyPage(() => import('../pages/PostalDrugPage'));
+const PlaceholderPage = lazyPage(() => import('../pages/PlaceholderPage'));
 const MyFeedbackPage = lazyPage(() => import('../pages/MyFeedbackPage'));
 
 const guard = (page: string, element: ReactNode) => <PageGuard page={page}>{element}</PageGuard>;
@@ -80,6 +81,7 @@ export default function AppRoutes() {
         <Route path="/dental" element={guard('dental', <DentalPage />)} />
         <Route path="/physio" element={guard('physio', <PhysioPage />)} />
         <Route path="/telemedicine" element={guard('tele', <TelemedicinePage />)} />
+        <Route path="/teleframe" element={guard('tele', <PlaceholderPage title="Teleframe" icon="fa-display" description="หน้านี้กำลังพัฒนา — จะแสดงสถิติบริการ Teleframe เมื่อพร้อม" />)} />
         <Route path="/postal-drug" element={guard('postal', <PostalDrugPage />)} />
         <Route path="/thai-medicine" element={guard('thaimed', <ThaiMedicinePage />)} />
         <Route path="/readmit" element={guard('readmit', <ReadmitPage />)} />

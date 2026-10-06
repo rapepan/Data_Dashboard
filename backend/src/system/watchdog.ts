@@ -54,14 +54,17 @@ async function check(target: Target, now = Date.now()) {
 
 export const watchdog = {
   start() {
-    // เฉพาะเครื่องจริง — เครื่องพัฒนา backend รีสตาร์ทเองทุกครั้งที่แก้โค้ด ไม่ควรแจ้งเข้ากลุ่ม (ทดสอบบนเครื่องพัฒนา: ALERT_IN_DEV=1)
-    if (process.env.NODE_ENV !== 'production' && process.env.ALERT_IN_DEV !== '1') return;
+    const production = process.env.NODE_ENV === 'production';
+    // เครื่องพัฒนา: แจ้งฐานข้อมูลล่มเฉพาะเมื่อตั้ง ALERT_IN_DEV=1 (เช่น เปิดให้คนอื่นเทสผ่าน Forward port)
+    if (!production && process.env.ALERT_IN_DEV !== '1') return;
     if (hosxpRepository.isConfigured()) targets.push({ label: 'HOSxP', ping: () => hosxpRepository.ping(), downSince: null, alerted: false, error: '' });
     if (appDb.isConfigured()) targets.push({ label: 'ฐาน data_dashboard', ping: () => appDb.ping(), downSince: null, alerted: false, error: '' });
     timer = setInterval(() => { for (const t of targets) void check(t); }, CHECK_MS);
     timer.unref();
 
     // ไฟล์บอกว่ากำลังทำงาน — ยังอยู่ตอนเปิด = รอบก่อนไม่ได้ปิดตามปกติ (crash / เครื่องดับ / ถูก kill)
+    // เฉพาะเครื่องจริง — เครื่องพัฒนา backend ถูกรีสตาร์ทเองทุกครั้งที่แก้โค้ด จะแจ้งเข้ากลุ่มทุกครั้ง
+    if (!production) return;
     try {
       if (existsSync(MARKER)) {
         const since = Number(readFileSync(MARKER, 'utf8')) || null;

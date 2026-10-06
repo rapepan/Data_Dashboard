@@ -1,4 +1,6 @@
 import type { LabelValue, PostalDrugReport } from '../types/reports.types';
+import { fiscalSeries } from './fiscal-series';
+import { POSTAL_DELIVERIES } from './fiscal-data';
 
 /**
  * ข้อมูลจำลองหน้าการส่งยาทางไปรษณีย์ — อิง HOSxP รพ.บางเสาธง (ตรวจเมื่อ 30/09/2569)
@@ -8,9 +10,8 @@ import type { LabelValue, PostalDrugReport } from '../types/reports.types';
  * เมื่อต่อจริงให้แทนที่ด้วย query โดยคง response shape เดิม (types/reports.types.ts)
  */
 const MONTHS = ['ต.ค.', 'พ.ย.', 'ธ.ค.', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.'];
-/** ครั้งรายเดือนจริง ปีงบ 2569 (ต.ค. 68 – ก.ย. 69) */
-const MONTHLY = [0, 4, 0, 1, 2, 1, 2, 1, 2, 0, 2, 1];
-const PER_DAY = MONTHLY.reduce((a, b) => a + b, 0) / 365;
+/** ปีงบ 2569 ส่ง 16 ครั้ง · ต.ค. 2569 ยังไม่มี (ยอดรายเดือนจริงอยู่ใน fiscal-data.ts) */
+const PER_DAY = 16 / 365;
 const ITEMS_PER_DELIVERY = 4.4;
 
 /** สัดส่วนจากข้อมูลจริงทั้งหมด (ชื่อตามตารางในฐาน) */
@@ -55,11 +56,9 @@ export function generatePostalDrugReport(start: string, end: string): PostalDrug
   const endDate = new Date(`${end}T00:00:00`);
   const fyStartYear = endDate.getMonth() >= 9 ? endDate.getFullYear() : endDate.getFullYear() - 1;
   const currentFyMonth = (endDate.getMonth() + 3) % 12;
-  const daysInMonth = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0).getDate();
 
-  // เดือนหลังวันสิ้นสุดยังไม่เกิดขึ้น · เดือนปัจจุบันนับถึงวันสิ้นสุด
-  const monthly = MONTHLY.map((v, i) => (i > currentFyMonth ? 0 : jitter(v)));
-  monthly[currentFyMonth] = Math.round(monthly[currentFyMonth] * (endDate.getDate() / daysInMonth));
+  // ยอดจริงรายเดือน (จำนวนน้อย ไม่สุ่ม) · เดือนของวันสิ้นสุดนับถึงวันนั้น · เดือนที่ยังไม่ถึง = 0
+  const monthly = fiscalSeries(fyStartYear, POSTAL_DELIVERIES, end, 0);
   const fiscalTotal = monthly.reduce((a, b) => a + b, 0);
   const rangeTotal = jitter(PER_DAY * daysBetween(start, end));
   const topTotal = Math.max(fiscalTotal, 1);

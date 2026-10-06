@@ -34,7 +34,7 @@ function changePct(current: number, previous: number) {
 }
 
 /** เปรียบเทียบยา 1 รายการย้อนหลัง 3 ปีงบประมาณ */
-function DrugCompareView({ compare }: { compare: DrugCompare }) {
+function DrugCompareView({ compare, showMoney }: { compare: DrugCompare; showMoney: boolean }) {
   const { drug, years, monthly } = compare;
   return (
     <div className="compare-view">
@@ -46,7 +46,7 @@ function DrugCompareView({ compare }: { compare: DrugCompare }) {
             <div key={year.fiscalYear} className={i === years.length - 1 ? 'latest' : ''} style={{ ['--c' as string]: YEAR_COLORS[i] }}>
               <span className="compare-fy">ปีงบประมาณ {year.fiscalYear}{i === years.length - 1 && ' (ปัจจุบัน)'}</span>
               <b>{formatNumber(year.qty)} <small>{drug.unit}</small></b>
-              <em>{money.format(year.value)} บาท</em>
+              {showMoney && <em>ขาย {money.format(year.value)} · ทุน {money.format(year.cost)} บาท</em>}
               {change !== null && (
                 <span className={`metric-change ${change >= 0 ? 'good' : 'bad'}`}>
                   <i className={`fa-solid ${change >= 0 ? 'fa-caret-up' : 'fa-caret-down'}`} />
@@ -106,7 +106,7 @@ export default function DrugBudgetPage() {
       <PageHeader
         meta={data?.meta}
         title="ปริมาณการใช้ยา"
-        subtitle={<>ปริมาณและมูลค่าการใช้ยา ระหว่างวันที่ <b>{formatDmy(filter.start)}</b> ถึง <b>{formatDmy(filter.end)}</b></>}
+        subtitle={<>ปริมาณการใช้ยา ราคาทุน / ราคาขาย และผู้ป่วยที่รับยา ระหว่างวันที่ <b>{formatDmy(filter.start)}</b> ถึง <b>{formatDmy(filter.end)}</b></>}
         actions={<FilterBar filter={filter} onApply={applyFilter} onRefresh={refresh} />}
       />
       {error && <div className="notice-bar error"><i className="fa-solid fa-triangle-exclamation" /><span>{error}</span></div>}
@@ -121,11 +121,21 @@ export default function DrugBudgetPage() {
           thai: data.topDrugs.thai.filter(pass),
           inhouse: data.topDrugs.inhouse.filter(pass),
         };
-        const total = (items: { qty: number; value: number }[]) => ({ qty: items.reduce((s, i) => s + i.qty, 0), value: items.reduce((s, i) => s + i.value, 0) });
+        const total = (items: { qty: number; value: number; cost?: number }[]) => ({
+          qty: items.reduce((s, i) => s + i.qty, 0),
+          value: items.reduce((s, i) => s + i.value, 0),
+          cost: items.reduce((s, i) => s + (i.cost ?? 0), 0),
+        });
         const byType = { modern: total(lists.modern), thai: total(lists.thai), inhouse: total(lists.inhouse) };
         const all = total([...lists.modern, ...lists.thai, ...lists.inhouse]);
         const edLabel = edFilter === 'all' ? '' : edFilter === 'ed' ? ' · ในบัญชียาหลัก' : ' · นอกบัญชียาหลัก';
-        const edShare = data.totals.value ? (data.totals.ed.value / data.totals.value) * 100 : 0;
+        // สัดส่วนในบัญชี: login = ตามมูลค่า · ผู้เยี่ยมชม = ตามจำนวนชิ้น
+        const edShare = data.showMoney
+          ? (data.totals.value ? (data.totals.ed.value / data.totals.value) * 100 : 0)
+          : (data.totals.qty ? (data.totals.ed.qty / data.totals.qty) * 100 : 0);
+        const margin = all.value - all.cost;
+        const p = data.patients as typeof data.patients | undefined;
+        const pct = (n: number, of: number) => (of ? `${((n / of) * 100).toFixed(1)}%` : '0%');
         return (
           <>
             <div className="drug-ed-bar">
@@ -135,7 +145,7 @@ export default function DrugBudgetPage() {
                   <button key={f.value} className={edFilter === f.value ? 'active' : ''} onClick={() => setEdFilter(f.value)}>{f.label}</button>
                 ))}
               </div>
-              <div className="drug-ed-split" title="สัดส่วนมูลค่าการใช้ยา ในบัญชี / นอกบัญชียาหลัก (ช่วงวันที่ที่เลือก)">
+              <div className="drug-ed-split" title={`สัดส่วน${data.showMoney ? 'มูลค่า' : 'จำนวนชิ้น'}การใช้ยา ในบัญชี / นอกบัญชียาหลัก (ช่วงวันที่ที่เลือก)`}>
                 <span className="drug-ed-track"><span style={{ width: `${edShare}%` }} /></span>
                 <small>
                   ในบัญชี <b>{edShare.toFixed(1)}%</b> ({data.totals.ed.items} รายการ) · นอกบัญชี <b>{(100 - edShare).toFixed(1)}%</b> ({data.totals.ned.items} รายการ)
@@ -143,13 +153,110 @@ export default function DrugBudgetPage() {
               </div>
             </div>
 
-            <section className="grid-5">
-              <KpiCard accent="indigo" icon="fa-boxes-stacked" title={`ปริมาณการใช้ยารวม${edLabel}`} value={formatNumber(all.qty)} unit="ชิ้น" badgeIcon="fa-calendar-days" badge={period} />
-              <KpiCard accent="plum" icon="fa-coins" title={`มูลค่าการใช้ยารวม${edLabel}`} value={money.format(all.value)} unit="บาท" badgeIcon="fa-calendar-days" badge={period} />
-              <KpiCard accent="plum" icon="fa-seedling" title="มูลค่าการใช้ยาสมุนไพร" value={money.format(byType.thai.value)} unit="บาท" badgeIcon="fa-list" badge={`${lists.thai.length} รายการ`} />
-              <KpiCard accent="indigo" icon="fa-capsules" title="มูลค่าการใช้ยาสามัญ" value={money.format(byType.modern.value)} unit="บาท" badgeIcon="fa-list" badge={`${lists.modern.length} รายการ`} />
-              <KpiCard accent="amber" icon="fa-flask" title="มูลค่าการใช้ยาผลิตใช้เอง" value={money.format(byType.inhouse.value)} unit="บาท" badgeIcon="fa-list" badge={`${lists.inhouse.length} รายการ`} />
+            {/* ผู้ป่วยที่รับยา / ไม่มียา — ข้อมูลรุ่นเก่า (ที่พักผลก่อนอัปเดต) ไม่มีส่วนนี้ ข้ามไปไม่ให้หน้าพัง */}
+            {p && <>
+            <section className="grid-3">
+              <KpiCard accent="indigo" icon="fa-prescription-bottle-medical" title="ผู้ป่วยนอกที่รับยา" value={formatNumber(p.opd.withDrug)} unit="ครั้ง"
+                badgeIcon="fa-user" badge={`${formatNumber(p.opd.personsWithDrug)} คน`} note={`${pct(p.opd.withDrug, p.opd.visits)} ของผู้ป่วยนอก ${formatNumber(p.opd.visits)} ครั้ง`} />
+              <KpiCard accent="slate" icon="fa-ban" title="ผู้ป่วยนอกที่ไม่มียา" value={formatNumber(p.opd.noDrug)} unit="ครั้ง"
+                badgeIcon="fa-user" badge={`${formatNumber(p.opd.personsNoDrug)} คน`} note={`${pct(p.opd.noDrug, p.opd.visits)} — เช่น ทำแผล ตรวจตามนัด ทำหัตถการ`} />
+              <KpiCard accent="plum" icon="fa-bed-pulse" title="ผู้ป่วยในที่รับยา" value={formatNumber(p.ipd.withDrug)} unit="ราย"
+                badgeIcon="fa-hospital" badge={`จาก admit ${formatNumber(p.ipd.admits)} ราย`} note={pct(p.ipd.withDrug, p.ipd.admits)} />
             </section>
+            <p className="panel-foot-note drug-patient-note">นับตามครั้งที่มารับบริการ (visit) · ผู้ป่วยคนเดียวที่มาหลายครั้ง อาจมีทั้งครั้งที่รับยาและไม่มียา จึงนับอยู่ทั้งสองกลุ่ม</p>
+            </>}
+
+            {data.showMoney ? (
+              <>
+                <section className="grid-4">
+                  <KpiCard accent="indigo" icon="fa-boxes-stacked" title={`ปริมาณการใช้ยารวม${edLabel}`} value={formatNumber(all.qty)} unit="ชิ้น" badgeIcon="fa-calendar-days" badge={period} />
+                  <KpiCard accent="slate" icon="fa-tags" title={`ราคาทุนรวม${edLabel}`} value={money.format(all.cost)} unit="บาท" badgeIcon="fa-calendar-days" badge={period} />
+                  <KpiCard accent="plum" icon="fa-coins" title={`ราคาขายรวม${edLabel}`} value={money.format(all.value)} unit="บาท" badgeIcon="fa-calendar-days" badge={period} />
+                  <KpiCard accent={margin < 0 ? 'rose' : 'amber'} icon="fa-scale-balanced" title="ส่วนต่าง (ขาย − ทุน)" value={money.format(margin)} unit="บาท"
+                    badgeIcon="fa-percent" badge={`${all.value ? ((margin / all.value) * 100).toFixed(1) : '0.0'}% ของราคาขาย`} />
+                </section>
+              </>
+            ) : (
+              <>
+                <section className="grid-4">
+                  <KpiCard accent="indigo" icon="fa-boxes-stacked" title={`ปริมาณการใช้ยารวม${edLabel}`} value={formatNumber(all.qty)} unit="ชิ้น" badgeIcon="fa-calendar-days" badge={period} />
+                  <KpiCard accent="plum" icon="fa-seedling" title="ยาสมุนไพร" value={formatNumber(byType.thai.qty)} unit="ชิ้น" badgeIcon="fa-list" badge={`${lists.thai.length} รายการ`} />
+                  <KpiCard accent="indigo" icon="fa-capsules" title="ยาสามัญ" value={formatNumber(byType.modern.qty)} unit="ชิ้น" badgeIcon="fa-list" badge={`${lists.modern.length} รายการ`} />
+                  <KpiCard accent="amber" icon="fa-flask" title="ยาผลิตใช้เอง" value={formatNumber(byType.inhouse.qty)} unit="ชิ้น" badgeIcon="fa-list" badge={`${lists.inhouse.length} รายการ`} />
+                </section>
+                <div className="notice-bar drug-money-note"><i className="fa-solid fa-lock" /><span>ราคาทุน / ราคาขาย แสดงเฉพาะผู้ที่เข้าสู่ระบบ</span></div>
+              </>
+            )}
+
+            {/* กราฟ: แนวโน้มรายเดือน + ทุน/ขายแยกกลุ่มยา */}
+            {/* ข้อมูลรุ่นเก่า (ที่พักผลก่อนอัปเดต) ไม่มีรายเดือน — ข้ามไม่ให้หน้าพัง */}
+            {(data.monthly as typeof data.monthly | undefined) && (
+            <section className="report-row cols-2">
+              <Panel title="ผู้ป่วยนอกที่รับยา / ไม่มียา รายเดือน" subtitle={`จำนวนครั้ง (แท่ง) และ % ที่รับยา (เส้น) · ปีงบประมาณ ${data.monthly.fiscalYear}`} printable>
+                <ReportChart
+                  labels={data.monthly.labels}
+                  stacked
+                  height={300}
+                  printCategory="เดือน"
+                  rightAxis={{ suffix: '%', min: 0, max: 100 }}
+                  series={[
+                    { label: 'รับยา (ครั้ง)', data: data.monthly.withDrug, color: '#4f46e5' },
+                    { label: 'ไม่มียา (ครั้ง)', data: data.monthly.noDrug, color: '#cbd5e1' },
+                    { label: '% รับยา', type: 'line', axis: 'right', color: '#e11d48', data: data.monthly.withDrug.map((w, i) => {
+                      const all = w + data.monthly.noDrug[i];
+                      return all ? Math.round((w / all) * 1000) / 10 : null;
+                    }) },
+                  ]}
+                />
+              </Panel>
+              {data.showMoney ? (
+                <Panel title="ราคาทุน / ราคาขาย รายเดือน" subtitle={`บาท (แท่ง) และ % ส่วนต่างของราคาขาย (เส้น) · ปีงบประมาณ ${data.monthly.fiscalYear}`} printable>
+                  <ReportChart
+                    labels={data.monthly.labels}
+                    height={300}
+                    printCategory="เดือน"
+                    rightAxis={{ suffix: '%', min: 0, max: 60 }}
+                    series={[
+                      { label: 'ราคาทุน', data: data.monthly.cost, color: '#94a3b8' },
+                      { label: 'ราคาขาย', data: data.monthly.sale, color: '#8b5cf6' },
+                      { label: '% ส่วนต่าง', type: 'line', axis: 'right', color: '#d97706', data: data.monthly.sale.map((v, i) => (v ? Math.round(((v - data.monthly.cost[i]) / v) * 1000) / 10 : null)) },
+                    ]}
+                  />
+                </Panel>
+              ) : (
+                <Panel title="ปริมาณการใช้ยาแยกกลุ่ม" subtitle={`จำนวนชิ้น · ${period}`} printable>
+                  <ReportChart
+                    labels={['ยาสามัญ', 'ยาสมุนไพร', 'ยาผลิตใช้เอง']}
+                    horizontal
+                    showValues
+                    showLegend={false}
+                    height={300}
+                    printCategory="กลุ่มยา"
+                    series={[{ label: 'จำนวนชิ้น', data: [byType.modern.qty, byType.thai.qty, byType.inhouse.qty], color: '#4f46e5' }]}
+                  />
+                </Panel>
+              )}
+            </section>
+            )}
+            {data.showMoney && (
+              <Panel title={`ราคาทุน / ราคาขาย แยกกลุ่มยา${edLabel}`} subtitle={`บาท · ${period}`} printable className="mb-row">
+                <ReportChart
+                  labels={[`ยาสามัญ (${lists.modern.length} รายการ)`, `ยาสมุนไพร (${lists.thai.length} รายการ)`, `ยาผลิตใช้เอง (${lists.inhouse.length} รายการ)`]}
+                  horizontal
+                  height={220}
+                  printCategory="กลุ่มยา"
+                  series={[
+                    { label: 'ราคาทุน', data: [byType.modern.cost, byType.thai.cost, byType.inhouse.cost].map(v => Math.round(v)), color: '#94a3b8' },
+                    { label: 'ราคาขาย', data: [byType.modern.value, byType.thai.value, byType.inhouse.value].map(v => Math.round(v)), color: '#8b5cf6' },
+                  ]}
+                />
+                <p className="panel-foot-note">
+                  ยาสมุนไพร: ทุน {money.format(byType.thai.cost)} · ขาย {money.format(byType.thai.value)} บาท ·
+                  ยาผลิตใช้เอง: ทุน {money.format(byType.inhouse.cost)} · ขาย {money.format(byType.inhouse.value)} บาท
+                  (แท่งสั้นเพราะยาสามัญมีมูลค่ามากกว่าหลายสิบเท่า — ชี้ที่แท่งเพื่อดูตัวเลข)
+                </p>
+              </Panel>
+            )}
 
             <Panel
               title="เปรียบเทียบปริมาณและมูลค่าการใช้ยารายการ (ย้อนหลัง 3 ปี)"
@@ -165,7 +272,7 @@ export default function DrugBudgetPage() {
                   <span className="sk sk-chart" />
                 </div>
               ) : compare && drug ? (
-                <DrugCompareView compare={compare} />
+                <DrugCompareView compare={compare} showMoney={data.showMoney} />
               ) : (
                 <div className="compare-empty">
                   <i className="fa-solid fa-hand-pointer" />
@@ -176,15 +283,15 @@ export default function DrugBudgetPage() {
             </Panel>
 
             <Panel title={`อันดับการใช้ยาสามัญ${edLabel}`} subtitle={`ช่วงวันที่: ${period} · ${lists.modern.length} รายการ`} printable className="mb-row">
-              <DrugTable items={lists.modern} nameLabel="ชื่อยาสามัญ" searchPlaceholder="ค้นหายาสามัญ..." accent={MODERN_COLOR} />
+              <DrugTable items={lists.modern} nameLabel="ชื่อยาสามัญ" searchPlaceholder="ค้นหายาสามัญ..." accent={MODERN_COLOR} showMoney={data.showMoney} />
             </Panel>
 
             <section className="report-row cols-2">
               <Panel title={`อันดับการใช้ยาสมุนไพร${edLabel}`} subtitle={`ช่วงวันที่: ${period} · ${lists.thai.length} รายการ`} printable>
-                <DrugTable items={lists.thai} nameLabel="ชื่อยาสมุนไพร" searchPlaceholder="ค้นหายาสมุนไพร..." accent={THAI_COLOR} />
+                <DrugTable items={lists.thai} nameLabel="ชื่อยาสมุนไพร" searchPlaceholder="ค้นหายาสมุนไพร..." accent={THAI_COLOR} showMoney={data.showMoney} />
               </Panel>
               <Panel title={`อันดับการใช้ยาผลิตใช้เอง${edLabel}`} subtitle={`ช่วงวันที่: ${period} · ${lists.inhouse.length} รายการ`} printable>
-                <DrugTable items={lists.inhouse} nameLabel="ชื่อยาผลิตใช้เอง" searchPlaceholder="ค้นหายาผลิตใช้เอง..." accent={INHOUSE_COLOR} />
+                <DrugTable items={lists.inhouse} nameLabel="ชื่อยาผลิตใช้เอง" searchPlaceholder="ค้นหายาผลิตใช้เอง..." accent={INHOUSE_COLOR} showMoney={data.showMoney} />
               </Panel>
             </section>
           </>

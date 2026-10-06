@@ -1,4 +1,7 @@
-import type { DrugBudgetReport, DrugCatalogItem, DrugCompare, DrugGroupTotal, DrugItem, DrugType } from '../types/reports.types';
+import type { DrugBudgetReport, DrugCatalogItem, DrugCompare, DrugGroupTotal, DrugItem, DrugPatients, DrugType } from '../types/reports.types';
+import { rangeSum, SERIES } from './real-series';
+import { fiscalSeries, fiscalStartYear } from './fiscal-series';
+import { DRUG_COST, DRUG_SALE, DRUG_VISITS, DRUG_VISITS_WITH } from './fiscal-data';
 import { DRUGS, type DrugSeed } from './drug-catalog';
 import { DRUG_FY_MONTHLY } from './drug-history';
 
@@ -28,6 +31,7 @@ function sum(items: Usage[]): DrugGroupTotal {
   return {
     qty: items.reduce((s, u) => s + u.qty, 0),
     value: money(items.reduce((s, u) => s + u.value, 0)),
+    cost: money(items.reduce((s, u) => s + (u.cost ?? 0), 0)),
     items: items.length,
   };
 }
@@ -37,7 +41,7 @@ export function generateDrugBudgetReport(start: string, end: string): DrugBudget
   // ยาที่ใช้น้อย (เดือนละไม่กี่ชิ้น) ในช่วงสั้น ๆ อาจไม่มีการใช้เลย — เหมือนของจริง
   const usage: Usage[] = DRUGS.map(d => {
     const qty = jitter(d.monthlyQty * months);
-    return { code: d.code, name: d.name, unit: d.unit, type: d.type, ed: d.ed, qty, value: money(qty * d.price) };
+    return { code: d.code, name: d.name, unit: d.unit, type: d.type, ed: d.ed, qty, value: money(qty * d.price), cost: money(qty * d.cost) };
   }).filter(u => u.qty > 0);
 
   const byType = Object.fromEntries(TYPES.map(t => [t, sum(usage.filter(u => u.type === t))])) as Record<DrugType, DrugGroupTotal>;
@@ -52,6 +56,57 @@ export function generateDrugBudgetReport(start: string, end: string): DrugBudget
     totals: { ...sum(usage), byType, ed: sum(usage.filter(u => u.ed)), ned: sum(usage.filter(u => !u.ed)) },
     topDrugs,
     catalog: DRUGS.map(toCatalog).sort((a, b) => a.name.localeCompare(b.name)),
+    patients: drugPatients(start, end),
+    showMoney: true,
+    monthly: drugMonthly(end),
+  };
+}
+
+/** รายเดือนของปีงบที่วันสิ้นสุดอยู่ — ยอดจริงจาก fiscal-data.ts · เดือนที่ยังไม่ถึง = 0 */
+function drugMonthly(end: string): DrugBudgetReport['monthly'] {
+  const fy = fiscalStartYear(end);
+  // สุ่มครั้งเดียวต่อเดือน แล้วแยก รับยา / ไม่มียา จากยอดเดียวกัน (ผลรวมตรงกันเสมอ)
+  const visits = fiscalSeries(fy, DRUG_VISITS, end, 0.03);
+  const share = fiscalSeries(fy, DRUG_VISITS_WITH, end, 0).map((w, i) => {
+    const all = fiscalSeries(fy, DRUG_VISITS, end, 0)[i];
+    return all ? w / all : 0;
+  });
+  const withDrug = visits.map((v, i) => Math.round(v * share[i]));
+  return {
+    fiscalYear: fy + 1 + 543,
+    labels: MONTHS,
+    withDrug,
+    noDrug: visits.map((v, i) => v - withDrug[i]),
+    cost: fiscalSeries(fy, DRUG_COST, end, 0.03),
+    sale: fiscalSeries(fy, DRUG_SALE, end, 0.03),
+  };
+}
+
+/**
+ * ผู้ป่วยรับยา / ไม่มียา — อิง HOSxP รพ.บางเสาธง (ตรวจ 06/10/2569): visit ผู้ป่วยนอก (ovst) ที่มีรายการยาใน opitemrece
+ * 12 เดือน: 75,763 visit · มียา 42,667 (56.3%) · ผู้ป่วยในมียาเกือบทุก admit (2,033 / 2,034)
+ * คนไม่ซ้ำ ÷ ครั้ง ขึ้นกับความยาวช่วง (ช่วงยาว คนเดิมมาซ้ำ): [1 วัน, 30 วัน, 365 วัน]
+ */
+const PERSON_RATIO = { withDrug: [0.97, 0.837, 0.369], noDrug: [0.99, 0.547, 0.316] };
+function ratioFor(days: number, [d1, d30, d365]: number[]) {
+  // ประมาณแบบลอการิทึมของจำนวนวัน ระหว่างจุดจริง 1 / 30 / 365 วัน
+  const x = Math.log(Math.max(1, days));
+  if (x <= Math.log(30)) return d1 + (d30 - d1) * (x / Math.log(30));
+  return d30 + (d365 - d30) * Math.min(1, (x - Math.log(30)) / (Math.log(365) - Math.log(30)));
+}
+function drugPatients(start: string, end: string): DrugPatients {
+  const days = daysBetween(start, end);
+  const visits = jitter(rangeSum(SERIES.opd, start, end) ?? 207 * days, 0.03);
+  const withDrug = Math.round(visits * (0.56 + (Math.random() * 2 - 1) * 0.015));
+  const noDrug = visits - withDrug;
+  const admits = jitter(rangeSum(SERIES.admit, start, end) ?? 5.6 * days, 0.03);
+  return {
+    opd: {
+      visits, withDrug, noDrug,
+      personsWithDrug: Math.min(withDrug, Math.round(withDrug * ratioFor(days, PERSON_RATIO.withDrug))),
+      personsNoDrug: Math.min(noDrug, Math.round(noDrug * ratioFor(days, PERSON_RATIO.noDrug))),
+    },
+    ipd: { admits, withDrug: admits },
   };
 }
 
@@ -80,7 +135,7 @@ export function generateDrugCompare(code: string, end: string): DrugCompare | nu
     drug: toCatalog(drug),
     years: monthlyQty.map((months, yi) => {
       const qty = months.reduce((a, b) => a + b, 0);
-      return { fiscalYear: years[yi], qty, value: money(qty * drug.price) };
+      return { fiscalYear: years[yi], qty, value: money(qty * drug.price), cost: money(qty * drug.cost) };
     }),
     monthly: { labels: MONTHS, qty: monthlyQty },
   };

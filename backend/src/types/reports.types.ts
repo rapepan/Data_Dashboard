@@ -170,6 +170,48 @@ export interface RightsByTime {
   afterHours: number[];
 }
 
+/** ค่ารักษากายภาพบำบัดตามสิทธิ์ — ยอดรวมเท่านั้น (ไม่มีข้อมูลรายคน) */
+export interface PhysioRightRevenue {
+  name: string;
+  /** pttype */
+  code: string;
+  /** claim = เบิกได้ · selfpay = เก็บเงิน (ชื่อสิทธิ์มี "ชำระเงินเอง" หรือ A1 / A2 / B4) */
+  group: 'claim' | 'selfpay';
+  visits: number;
+  amount: number;
+}
+
+export interface PhysioMoney {
+  visits: number;
+  amount: number;
+}
+
+export interface PhysioRevenue {
+  /** ช่วงที่เลือก */
+  opd: { claim: PhysioMoney; selfpay: PhysioMoney; rights: PhysioRightRevenue[] };
+  ipd: { claim: PhysioMoney; selfpay: PhysioMoney; rights: PhysioRightRevenue[] };
+  /** ผู้ป่วยนอก 12 เดือนของปีงบประมาณ */
+  monthly: { labels: string[]; claim: number[]; selfpay: number[] };
+}
+
+/** นัดหมายคลินิกกายภาพบำบัด — นับจำนวนครั้งเท่านั้น (ไม่แสดงรายชื่อผู้ป่วย) */
+export interface PhysioAppointments {
+  /** ช่วงที่เลือก */
+  total: number;
+  came: number;
+  noShow: number;
+  /** นัดวันนี้ที่ยังไม่มา (ยังไม่ถึงเวลา) */
+  pendingToday: number;
+  /** มารับบริการโดยไม่มีนัดวันนั้น */
+  walkIn: number;
+  /** นัดล่วงหน้า 30 วันถัดจากวันสุดท้ายของช่วง */
+  upcoming30: number;
+  /** 12 เดือนของปีงบประมาณ */
+  monthly: { labels: string[]; came: number[]; noShow: number[]; walkIn: number[] };
+  /** จันทร์–ศุกร์ */
+  weekday: { labels: string[]; values: number[] };
+}
+
 export interface PhysioReport {
   start: string;
   end: string;
@@ -190,6 +232,8 @@ export interface PhysioReport {
   byRight: { opd: RightsByTime; ipd: RightsByTime };
   /** รายเดือน: [สิทธิ์][เดือน] */
   monthlyByRight: { opd: { inHours: number[][]; afterHours: number[][] }; ipd: { inHours: number[][]; afterHours: number[][] } };
+  revenue: PhysioRevenue;
+  appointments: PhysioAppointments;
 }
 
 /* ---------------------------- การแพทย์ทางไกล ---------------------------- */
@@ -218,8 +262,10 @@ export interface DrugItem {
   name: string;
   /** จำนวนชิ้น */
   qty: number;
-  /** มูลค่ารวม (บาท) */
+  /** มูลค่ารวม = ราคาขาย (บาท) */
   value: number;
+  /** ราคาทุนรวม (บาท) — มีเฉพาะหน้าปริมาณการใช้ยา */
+  cost?: number;
   /** หน่วยนับ (เม็ด / แคปซูล / ขวด ...) */
   unit?: string;
 }
@@ -278,7 +324,10 @@ export interface DrugCatalogItem {
 /** ยอดรวมของกลุ่มยา */
 export interface DrugGroupTotal {
   qty: number;
+  /** ราคาขายรวม (บาท) */
   value: number;
+  /** ราคาทุนรวม (บาท) */
+  cost: number;
   /** จำนวนรายการยาที่มีการใช้ */
   items: number;
 }
@@ -291,12 +340,25 @@ export interface DrugBudgetReport {
   topDrugs: Record<DrugType, (DrugItem & { ed: boolean })[]>;
   /** รายการยาทั้งหมด (ใช้ค้นหาเพื่อเปรียบเทียบย้อนหลัง) */
   catalog: DrugCatalogItem[];
+  /** ผู้ป่วยที่ได้รับยา / ไม่มียา (นับครั้งที่มารับบริการ + คนไม่ซ้ำ) */
+  patients: DrugPatients;
+  /** false = ผู้เยี่ยมชม — ราคาทุน / ราคาขายเป็น 0 (เห็นเฉพาะผู้ที่ login) */
+  showMoney: boolean;
+  /** รายเดือนของปีงบประมาณ (ต.ค.–ก.ย.) — visit ผู้ป่วยนอกที่รับยา / ไม่มียา · ราคาทุน / ขายรวม (บาท) */
+  monthly: { fiscalYear: number; labels: string[]; withDrug: number[]; noDrug: number[]; cost: number[]; sale: number[] };
+}
+
+export interface DrugPatients {
+  /** ผู้ป่วยนอก: visit ที่มีรายการยา / ไม่มีรายการยาเลย — คนที่มาหลายครั้งอาจอยู่ทั้งสองกลุ่ม */
+  opd: { visits: number; withDrug: number; noDrug: number; personsWithDrug: number; personsNoDrug: number };
+  /** ผู้ป่วยใน: admit ทั้งหมด / admit ที่มีรายการยา */
+  ipd: { admits: number; withDrug: number };
 }
 
 /** เปรียบเทียบยา 1 รายการ ย้อนหลัง 3 ปีงบประมาณ (ปีล่าสุดอยู่ท้าย) */
 export interface DrugCompare {
   drug: DrugCatalogItem;
-  years: { fiscalYear: number; qty: number; value: number }[];
+  years: { fiscalYear: number; qty: number; value: number; cost: number }[];
   /** 12 เดือน (ต.ค. – ก.ย.) ต่อปี — ลำดับเดียวกับ years */
   monthly: { labels: string[]; qty: number[][] };
 }

@@ -1,6 +1,6 @@
 import { API_BASE, apiGet, apiPost, apiPut } from './apiClient';
 
-export type FeedbackCategory = 'bug' | 'data' | 'suggestion' | 'other';
+export type FeedbackCategory = 'bug' | 'data' | 'suggestion' | 'other' | 'confirm';
 export type FeedbackStatus = 'new' | 'in_progress' | 'done';
 
 /** ไทม์ไลน์: ผู้ดูแลเปลี่ยนสถานะ/ตอบกลับ */
@@ -60,7 +60,16 @@ export const FEEDBACK_CATEGORY: Record<FeedbackCategory, { label: string; icon: 
   data: { label: 'ข้อมูลไม่ถูกต้อง', icon: 'fa-database', tone: 'amber' },
   suggestion: { label: 'ข้อเสนอแนะ', icon: 'fa-lightbulb', tone: 'indigo' },
   other: { label: 'อื่น ๆ', icon: 'fa-comment-dots', tone: 'slate' },
+  confirm: { label: 'ยืนยันข้อมูล', icon: 'fa-circle-check', tone: 'plum' },
 };
+
+/** หน้าที่มีคนยืนยันข้อมูลแล้ว (ใช้ข้อมูลตามระบบ ไม่ต้องแก้) — ล่าสุดก่อน */
+export interface PageConfirmation {
+  page: string;
+  count: number;
+  last: string;
+  people: { name: string; position: string; time: string }[];
+}
 
 /** แจ้งกระดิ่งให้โหลดใหม่ทันที (เช่น หลังผู้ดูแลเปลี่ยนสถานะเรื่อง) */
 export const FEEDBACK_CHANGED_EVENT = 'feedback:changed';
@@ -76,7 +85,7 @@ export const feedbackService = {
   submit: (body: { category: FeedbackCategory; page: string; message: string; position: string; phone: string; lineId: string; lineQr?: string; images: string[] }) =>
     apiPost<{ ok: true; id: string }>('/feedback', body),
   list: (status?: FeedbackStatus) =>
-    apiGet<{ entries: FeedbackEntry[]; counts: Record<FeedbackStatus | 'all', number> }>('/admin/feedback', { params: status ? { status } : undefined }),
+    apiGet<{ entries: FeedbackEntry[]; counts: Record<FeedbackStatus | 'all', number>; confirmations: PageConfirmation[] }>('/admin/feedback', { params: status ? { status } : undefined }),
   /** เรียกแบบเบื้องหลัง (silent): ไม่มี spinner ไม่ต่ออายุ session */
   summary: () => apiGet<FeedbackSummary>('/admin/feedback/summary', { silent: true }),
   bellSeen: (time: string) => apiPost<{ ok: true }>('/admin/feedback/summary/seen', { time }, { silent: true }),

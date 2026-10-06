@@ -534,3 +534,27 @@ describe('รายชื่อผู้พัฒนา (หน้าติด�
     expect(res.headers['cache-control']).toContain('no-store');
   });
 });
+
+describe('ปริมาณการใช้ยา: ราคาทุน / ขาย เฉพาะผู้ที่ login · ผู้ป่วยรับยา / ไม่มียา', () => {
+  const url = `/api/drug-budget/report?start=${shift(-29)}&end=${todayIso()}`;
+  it('login แล้วเห็นราคาทุน / ขาย และยอดผู้ป่วยรวมกันถูก', async () => {
+    const r = (await app.inject({ method: 'GET', url, headers: cookie(userToken) })).json();
+    expect(r.showMoney).toBe(true);
+    expect(r.totals.cost).toBeGreaterThan(0);
+    expect(r.totals.value).toBeGreaterThan(r.totals.cost);
+    expect(r.topDrugs.modern[0].cost).toBeGreaterThan(0);
+    const p = r.patients.opd;
+    expect(p.withDrug + p.noDrug).toBe(p.visits);
+    expect(p.personsWithDrug).toBeLessThanOrEqual(p.withDrug);
+  });
+  it('ผู้เยี่ยมชม: ราคาเป็น 0 ทั้งหมด แต่ยังเห็นจำนวนชิ้น / ผู้ป่วย', async () => {
+    const r = (await app.inject({ method: 'GET', url })).json();
+    expect(r.showMoney).toBe(false);
+    expect(r.totals.value + r.totals.cost + r.totals.byType.modern.cost).toBe(0);
+    expect(r.topDrugs.modern.every((d: { value: number; cost: number }) => d.value === 0 && d.cost === 0)).toBe(true);
+    expect(r.totals.qty).toBeGreaterThan(0);
+    expect(r.patients.opd.visits).toBeGreaterThan(0);
+    const c = (await app.inject({ method: 'GET', url: `/api/drug-budget/compare?code=1500462&start=${todayIso()}&end=${todayIso()}` })).json();
+    expect(c.years.every((y: { value: number; cost: number }) => y.value === 0 && y.cost === 0)).toBe(true);
+  });
+});

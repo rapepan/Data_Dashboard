@@ -1,14 +1,15 @@
-import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { DATA_DIR } from '../utils/paths';
 import { feedbackImages, IMAGE_RETENTION_DAYS, type FeedbackImage } from './feedback-images';
 import { appDb } from '../repositories/app-db';
-import { dbFeedbackStore } from './feedback-db';
+import { dbFeedbackStore, newEntry, type NewFeedback } from './feedback-db';
+export type { NewFeedback } from './feedback-db';
 
 const FILE = path.join(DATA_DIR, 'feedback.jsonl');
 
-export const FEEDBACK_CATEGORIES = ['bug', 'data', 'suggestion', 'other'] as const;
+/** confirm = ยืนยันข้อมูล: ผู้ใช้ตรวจแล้ว ใช้ข้อมูลตามที่ระบบแสดง ไม่ต้องแก้ (บันทึกเป็น "ดำเนินการแล้ว" ทันที) */
+export const FEEDBACK_CATEGORIES = ['bug', 'data', 'suggestion', 'other', 'confirm'] as const;
 export type FeedbackCategory = (typeof FEEDBACK_CATEGORIES)[number];
 
 /** ยังไม่ดำเนินการ → กำลังดำเนินการ → ดำเนินการแล้ว */
@@ -81,9 +82,9 @@ const readAll = readFeedbackFile;
 
 /** เก็บเป็นไฟล์ backend/data/feedback.jsonl */
 const fileStore = {
-  add(entry: Omit<FeedbackEntry, 'id' | 'time' | 'status'>): FeedbackEntry {
+  add(entry: NewFeedback): FeedbackEntry {
     mkdirSync(DATA_DIR, { recursive: true });
-    const saved: FeedbackEntry = { id: randomUUID().slice(0, 8), time: new Date().toISOString(), status: 'new', ...entry };
+    const saved = newEntry(entry);
     appendFileSync(FILE, JSON.stringify(saved) + '\n', 'utf8');
     return saved;
   },
@@ -170,7 +171,7 @@ const fileStore = {
 const store = () => (appDb.isConfigured() ? dbFeedbackStore : fileStore);
 
 export const feedbackStore = {
-  async add(entry: Omit<FeedbackEntry, 'id' | 'time' | 'status'>): Promise<FeedbackEntry> {
+  async add(entry: NewFeedback): Promise<FeedbackEntry> {
     return store().add(entry);
   },
   /** รายการล่าสุดก่อน */

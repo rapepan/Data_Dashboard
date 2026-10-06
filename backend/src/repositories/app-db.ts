@@ -70,7 +70,7 @@ export const appDb = {
       id CHAR(8) NOT NULL PRIMARY KEY COMMENT 'รหัสเรื่อง',
       created_at DATETIME(3) NOT NULL COMMENT 'เวลาแจ้ง (UTC)',
       status VARCHAR(16) NOT NULL COMMENT 'new / in_progress / done',
-      category VARCHAR(16) NOT NULL COMMENT 'bug / data / suggestion / other',
+      category VARCHAR(16) NOT NULL COMMENT 'bug / data / suggestion / other / confirm',
       page VARCHAR(200) NOT NULL,
       message TEXT NOT NULL,
       name VARCHAR(200) NULL COMMENT 'ชื่อผู้แจ้ง',

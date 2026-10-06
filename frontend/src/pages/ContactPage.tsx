@@ -11,6 +11,7 @@ import { NAV_GROUPS } from '../routes/navigation';
 import { ApiError, apiGet } from '../services/apiClient';
 import { FEEDBACK_CATEGORY, feedbackService, type FeedbackCategory } from '../services/feedbackService';
 import ImageAttach, { type AttachedImage } from '../components/ImageAttach';
+import ConfirmDialog from '../components/ConfirmDialog';
 import LineQrPicker from '../components/LineQrPicker';
 import { formatThaiPhone, isThaiPhoneComplete } from '../utils/phone';
 
@@ -19,11 +20,15 @@ const PAGE_OPTIONS = [
   { value: 'ทั่วไป / ทั้งระบบ', label: 'ทั่วไป / ทั้งระบบ' },
   { value: 'หน้าเข้าสู่ระบบ', label: 'หน้าเข้าสู่ระบบ' },
   ...NAV_GROUPS.flatMap(g => g.items)
-    .filter(item => !item.hidden && item.key !== 'contact' && item.key !== 'my-feedback' && item.page !== 'admin')
+    .filter(item => !item.hidden && !item.wip && item.key !== 'contact' && item.key !== 'my-feedback' && item.page !== 'admin')
     .map(item => ({ value: item.label, label: item.label })),
 ];
 
 const MESSAGE_MAX = 5000;
+/** ยืนยันข้อมูล: ไม่กรอกรายละเอียด = ส่งข้อความนี้ (backend ใช้ข้อความเดียวกัน) */
+const CONFIRM_MESSAGE = 'ตรวจสอบแล้ว ใช้ข้อมูลตามที่ระบบแสดงอยู่ ไม่ต้องแก้ไข';
+/** หน้าที่ยืนยันข้อมูลได้ — เฉพาะหน้ารายงาน (ไม่รวม "ทั่วไป" / หน้าเข้าสู่ระบบ) */
+const CONFIRM_PAGE_OPTIONS = PAGE_OPTIONS.slice(2);
 
 /** แปลงเบอร์เป็นลิงก์โทรออก (ตัดขีด/ช่องว่าง) */
 const telHref = (phone: string) => `tel:${phone.replace(/[^\d+]/g, '')}`;
@@ -65,12 +70,31 @@ export default function ContactPage() {
     return () => { cancelled = true; };
   }, [user]);
 
-  const submit = async (e: FormEvent) => {
+  const confirming = category === 'confirm';
+  const [askConfirm, setAskConfirm] = useState(false);
+  // เปลี่ยนเป็น "ยืนยันข้อมูล" → ต้องเป็นหน้ารายงาน · ไม่ต้องแนบรูป
+  const pickCategory = (key: FeedbackCategory) => {
+    setCategory(key);
+    if (key === 'confirm' && !CONFIRM_PAGE_OPTIONS.some(o => o.value === page)) setPage(CONFIRM_PAGE_OPTIONS[0].value);
+  };
+
+  const submit = (e: FormEvent) => {
     e.preventDefault();
+    // ยืนยันข้อมูล: ถามซ้ำอีกครั้งก่อนส่ง (กันกดผิดหน้า)
+    if (confirming) setAskConfirm(true);
+    else void send();
+  };
+
+  const send = async () => {
+    setAskConfirm(false);
     setError(null);
     setSending(true);
     try {
-      const result = await feedbackService.submit({ category, page, message: message.trim(), position: position.trim(), phone: phone.trim(), lineId: lineMode === 'id' ? lineId.trim() : '', lineQr: lineMode === 'qr' ? lineQr ?? undefined : undefined, images: images.map(img => img.dataUrl) });
+      const result = await feedbackService.submit({
+        category, page, message: message.trim(), position: position.trim(), phone: phone.trim(),
+        lineId: lineMode === 'id' ? lineId.trim() : '', lineQr: lineMode === 'qr' ? lineQr ?? undefined : undefined,
+        images: confirming ? [] : images.map(img => img.dataUrl),
+      });
       setSentId(result.id);
       setMessage('');
       setPhone('');
@@ -169,7 +193,7 @@ export default function ContactPage() {
           ) : sentId ? (
             <div className="contact-sent">
               <span className="contact-sent-icon"><i className="fa-solid fa-check" /></span>
-              <strong>ส่งเรื่องเรียบร้อยแล้ว ขอบคุณครับ/ค่ะ</strong>
+              <strong>{confirming ? `บันทึกการยืนยันข้อมูลหน้า "${page}" แล้ว ขอบคุณครับ/ค่ะ` : 'ส่งเรื่องเรียบร้อยแล้ว ขอบคุณครับ/ค่ะ'}</strong>
               <p>หมายเลขอ้างอิง <code>{sentId}</code> — ใช้อ้างอิงเมื่อสอบถามทีมผู้พัฒนา</p>
               <div className="contact-sent-actions">
                 <Link to="/my-feedback" className="btn-primary"><i className="fa-solid fa-list-check" /> ติดตามสถานะ</Link>
@@ -193,7 +217,7 @@ export default function ContactPage() {
                       key={key}
                       type="button"
                       className={`category-option tone-${FEEDBACK_CATEGORY[key].tone}${category === key ? ' active' : ''}`}
-                      onClick={() => setCategory(key)}
+                      onClick={() => pickCategory(key)}
                       aria-pressed={category === key}
                     >
                       <i className={`fa-solid ${FEEDBACK_CATEGORY[key].icon}`} />
@@ -203,25 +227,31 @@ export default function ContactPage() {
                 </div>
               </fieldset>
 
+              {confirming && (
+                <p className="confirm-hint">
+                  <i className="fa-solid fa-circle-check" /> ใช้เมื่อตรวจสอบตัวเลขในหน้านั้นแล้ว และ<b>ยืนยันว่าจะใช้ข้อมูลตามที่ระบบแสดงอยู่ ไม่ต้องแก้ไข</b>
+                </p>
+              )}
+
               <div className="contact-field">
-                <span className="contact-label">หน้าที่เกี่ยวข้อง</span>
-                <Select<string> ariaLabel="หน้าที่เกี่ยวข้อง" value={page} options={PAGE_OPTIONS} onChange={setPage} />
+                <span className="contact-label">{confirming ? <>หน้าที่ยืนยันข้อมูล <em>*</em></> : 'หน้าที่เกี่ยวข้อง'}</span>
+                <Select<string> ariaLabel={confirming ? 'หน้าที่ยืนยันข้อมูล' : 'หน้าที่เกี่ยวข้อง'} value={page} options={confirming ? CONFIRM_PAGE_OPTIONS : PAGE_OPTIONS} onChange={setPage} />
               </div>
 
               <label className="contact-field">
-                <span className="contact-label">รายละเอียด <em>*</em></span>
+                <span className="contact-label">{confirming ? 'หมายเหตุ (ไม่บังคับ)' : <>รายละเอียด <em>*</em></>}</span>
                 <textarea
                   value={message}
                   onChange={e => setMessage(e.target.value.slice(0, MESSAGE_MAX))}
-                  rows={6}
-                  required
-                  minLength={5}
-                  placeholder="เช่น หน้าผู้ป่วยนอก (OPD) เลือกวันที่ 01/09/2569 – 23/09/2569 แล้วกราฟรายชั่วโมงไม่แสดง..."
+                  rows={confirming ? 3 : 6}
+                  required={!confirming}
+                  minLength={confirming ? undefined : 5}
+                  placeholder={confirming ? `"${CONFIRM_MESSAGE}"` : 'เช่น หน้าผู้ป่วยนอก (OPD) เลือกวันที่ 01/09/2569 – 23/09/2569 แล้วกราฟรายชั่วโมงไม่แสดง...'}
                 />
                 <small className="contact-count">{message.length.toLocaleString()} / {MESSAGE_MAX.toLocaleString()}</small>
               </label>
 
-              <ImageAttach images={images} onChange={setImages} />
+              {!confirming && <ImageAttach images={images} onChange={setImages} />}
 
               <div className="contact-row">
                 <label className="contact-field">
@@ -267,12 +297,21 @@ export default function ContactPage() {
 
               <div className="contact-actions">
                 <small></small>
-                <button type="submit" className="btn-primary" disabled={sending || message.trim().length < 5 || !name.trim() || !position.trim() || !hasContact}>
-                  {sending ? 'กำลังส่ง...' : <><i className="fa-solid fa-paper-plane" /> ส่งเรื่อง</>}
+                <button type="submit" className="btn-primary" disabled={sending || (!confirming && message.trim().length < 5) || !name.trim() || !position.trim() || !hasContact}>
+                  {sending ? 'กำลังส่ง...' : confirming ? <><i className="fa-solid fa-circle-check" /> ยืนยันข้อมูล</> : <><i className="fa-solid fa-paper-plane" /> ส่งเรื่อง</>}
                 </button>
               </div>
             </form>
           )}
+          <ConfirmDialog
+            open={askConfirm}
+            icon="fa-circle-check"
+            title="ยืนยันข้อมูลหน้านี้?"
+            message={`ยืนยันว่าข้อมูลหน้า "${page}" ถูกต้อง และจะใช้ข้อมูลตามที่ระบบแสดงอยู่ ไม่ต้องแก้ไข`}
+            confirmLabel="ยืนยันข้อมูล"
+            onConfirm={() => void send()}
+            onCancel={() => setAskConfirm(false)}
+          />
         </article>
       </section>
       )}

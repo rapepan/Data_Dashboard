@@ -19,6 +19,7 @@ const CATEGORY: Record<FeedbackCategory, { icon: string; label: string }> = {
   data: { icon: '📊', label: 'ข้อมูลไม่ถูกต้อง' },
   suggestion: { icon: '💡', label: 'ข้อเสนอแนะ' },
   other: { icon: '💬', label: 'อื่น ๆ' },
+  confirm: { icon: '✅', label: 'ยืนยันข้อมูล' },
 };
 
 const ids = (value: string | undefined) => (value ?? '').split(',').map(id => id.trim()).filter(Boolean);
@@ -51,7 +52,7 @@ export function feedbackMessage(entry: FeedbackEntry) {
   const meta = CATEGORY[entry.category] ?? CATEGORY.other;
   const who = [entry.name, entry.position && `(${entry.position})`].filter(Boolean).join(' ');
   const lines = [
-    `${meta.icon} <b>แจ้งปัญหาใหม่</b> #${entry.id}`,
+    entry.category === 'confirm' ? `${meta.icon} <b>ยืนยันข้อมูล</b> #${entry.id}` : `${meta.icon} <b>แจ้งปัญหาใหม่</b> #${entry.id}`,
     `ประเภท: <b>${esc(meta.label)}</b>`,
     `หน้า: ${esc(entry.page)}`,
     '',

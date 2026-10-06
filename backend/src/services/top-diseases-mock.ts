@@ -1,5 +1,5 @@
 /**
- * 10 อันดับโรค (วินิจฉัยหลัก) — ข้อมูลจำลองที่อิงสัดส่วนจริงจาก HOSxP รพ.บางเสาธง (ตรวจเมื่อ 30/09/2569)
+ * 10 อันดับโรค (วินิจฉัยหลัก) — ข้อมูลจำลองที่อิงสัดส่วนจริงจาก HOSxP รพ.บางเสาธง (ตรวจซ้ำ 06/10/2569)
  * ใช้ร่วมกันทั้งหน้า OPD และหน้าแรก (Dashboard) ให้ตัวเลขตรงกัน
  */
 /** ชื่อโรคภาษาไทย — icd101.tname (โรคที่ในฐานไม่มีชื่อไทย แสดงชื่ออังกฤษ) */
@@ -15,6 +15,7 @@ const THAI: Record<string, string> = {
   J189: 'ปอดบวม',
   I500: 'หัวใจล้มเหลวแบบมีน้ำคั่ง',
   I639: 'เนื้อสมองตายเพราะขาดเลือด ไม่ระบุรายละเอียด',
+  E789: 'ความผิดปกติของเมตะบอลิซึมของไลโปโปรตีน  ไม่ระบุรายละเอียด',
   N390: 'ทางเดินปัสสาวะอักเสบ',
   K922: 'เลือดออกในช่องท้องส่วนบน',
   N179: 'ไตวายเฉียบพลัน ไม่ระบุรายละเอียด',
@@ -27,30 +28,30 @@ const jitter = (value: number, pct = 0.08) => Math.max(0, Math.round(value * (1 
  * ครั้ง/เดือน = ย้อนหลัง 12 เดือน ÷ 12 · สัดส่วนราย/ครั้ง จาก 30 วันล่าสุด และ 12 เดือน
  */
 const OPD: [string, string, number, number, number][] = [
-  ['Z480', 'Attention to surgical dressings and sutures', 548, 0.22, 0.19],
+  ['Z480', 'Attention to surgical dressings and sutures', 555, 0.22, 0.19],
   ['I10', 'Essential (primary) hypertension', 351, 0.95, 0.43],
-  ['E119', 'Type 2 diabetes mellitus Without complications', 294, 0.99, 0.36],
+  ['E119', 'Type 2 diabetes mellitus Without complications', 293, 0.99, 0.36],
   ['J00', 'Acute nasopharyngitis [common cold]', 200, 0.94, 0.78],
-  ['K021', 'Caries of dentine', 103, 0.91, 0.68],
-  ['Z012', 'Dental examination', 102, 0.96, 0.79],
+  ['K021', 'Caries of dentine', 102, 0.91, 0.68],
+  ['Z012', 'Dental examination', 101, 0.96, 0.79],
   ['R42', 'Dizziness and giddiness', 82, 0.9, 0.73],
-  ['M6261', 'Shoulder region', 77, 0.69, 0.24],
+  ['M6261', 'Shoulder region', 76, 0.69, 0.24],
   ['Z113', 'Special screening examination for infections with a predominantly sexual mode of transmission', 71, 0.64, 0.55],
-  ['Z098', 'Follow-up examination after other treatment for other conditions', 69, 0.57, 0.47],
+  ['E789', 'Disorder of lipoprotein metabolism,unspecified', 69, 0.95, 0.5],
 ];
 
 /** IPD: iptdiag diagtype=1 ย้อนหลัง 12 เดือน (admit ทั้งปี ~2,018 ครั้ง) — [รหัส, ชื่อโรค, admit/ปี] */
 const IPD: [string, string, number][] = [
-  ['E119', 'Type 2 diabetes mellitus Without complications', 99],
+  ['E119', 'Type 2 diabetes mellitus Without complications', 100],
   ['A099', 'Gastroenteritis and colitis of unspecified origin', 91],
-  ['J189', 'Pneumonia, unspecified', 83],
+  ['J189', 'Pneumonia, unspecified', 86],
   ['I500', 'Congestive heart failure', 55],
   ['I639', 'Cerebral infarction,unspecified', 55],
-  ['J441', 'Chronic obstructive pulmonary disease with acute exacerbation, unspecified', 51],
-  ['N390', 'Urinary tract infection, site not specified', 51],
-  ['L031', 'Cellulitis of other parts of limb', 49],
-  ['K922', 'Gastrointestinal haemorrhage, unspecified', 38],
-  ['N179', 'Acute renal failure, unspecified', 35],
+  ['N390', 'Urinary tract infection, site not specified', 52],
+  ['L031', 'Cellulitis of other parts of limb', 50],
+  ['J441', 'Chronic obstructive pulmonary disease with acute exacerbation, unspecified', 50],
+  ['K922', 'Gastrointestinal haemorrhage, unspecified', 39],
+  ['N179', 'Acute renal failure, unspecified', 36],
 ];
 
 /** scale = จำนวนวันที่เลือก ÷ 30 */

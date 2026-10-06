@@ -1,6 +1,7 @@
-import { useState, type MouseEvent } from 'react';
+import { useState, type MouseEvent, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { navIconClass, visibleNavGroups } from '../routes/navigation';
+import { NAV_PARENTS, navIconClass, visibleNavGroups } from '../routes/navigation';
+import type { NavItem } from '../types/nav';
 import { useAuth } from '../auth/AuthContext';
 import { useFeedbackSummary } from '../hooks/useFeedbackSummary';
 import { useMyFeedbackSummary } from '../hooks/useMyFeedbackSummary';
@@ -12,6 +13,11 @@ interface SidebarProps {
   open: boolean;
   collapsed: boolean;
   onClose: () => void;
+}
+
+const OPEN_KEY = 'nav-open';
+function readOpen(): string[] {
+  try { return JSON.parse(localStorage.getItem(OPEN_KEY) ?? '[]') as string[]; } catch { return []; }
 }
 
 interface Tip {
@@ -33,12 +39,40 @@ export default function Sidebar({ open, collapsed, onClose }: SidebarProps) {
   // หน้าที่ผู้ดูแลปิดปรับปรุงเฉพาะหน้า — แสดงไอคอน 🔧 ท้ายชื่อเมนู (ยังกดเข้าได้ จะเห็นข้อความแจ้ง)
   const closedPages = useSystemStatus().status?.pageMaintenance.pages ?? [];
 
+  // เมนูย่อยที่กางไว้ (จำในเบราว์เซอร์) — เปิดหน้าลูกอยู่จะกางให้เอง
+  const [openParents, setOpenParents] = useState<string[]>(readOpen);
+  const toggleParent = (key: string) => setOpenParents(list => {
+    const next = list.includes(key) ? list.filter(k => k !== key) : [...list, key];
+    try { localStorage.setItem(OPEN_KEY, JSON.stringify(next)); } catch { /* ไม่มี storage ก็ใช้ได้ */ }
+    return next;
+  });
+
   const showTip = (label: string) => (e: MouseEvent<HTMLElement>) => {
     if (!collapsed) return;
     const rect = e.currentTarget.getBoundingClientRect();
     setTip({ label, top: rect.top + rect.height / 2 });
   };
   const hideTip = () => setTip(null);
+
+  const link = (item: NavItem): ReactNode => (
+    <NavLink
+      key={item.key}
+      to={item.path}
+      end={item.path === '/'}
+      className={({ isActive }) => `nav-link${isActive ? ' active' : ''}${item.parent ? ' nav-child' : ''}`}
+      aria-label={item.label}
+      onClick={() => { hideTip(); onClose(); }}
+      onMouseEnter={showTip(item.label)}
+      onMouseLeave={hideTip}
+    >
+      <i className={navIconClass(item.icon)} /><span>{item.label}</span>
+      {item.wip && <em className="nav-wip">กำลังพัฒนา</em>}
+      {closedPages.includes(item.page ?? item.key) && (
+        <i className="fa-solid fa-screwdriver-wrench nav-maintenance" title="หน้านี้กำลังปิดปรับปรุง" aria-label="ปิดปรับปรุง" />
+      )}
+      {badgeFor(item.key) > 0 && <em className="nav-badge" aria-label={item.key === 'my-feedback' ? `มีความเคลื่อนไหวใหม่ ${badgeFor(item.key)} เรื่อง` : `ยังไม่ดำเนินการ ${badgeFor(item.key)} เรื่อง`}>{badgeFor(item.key) > 99 ? '99+' : badgeFor(item.key)}</em>}
+    </NavLink>
+  );
 
   return (
     <>
@@ -63,24 +97,36 @@ export default function Sidebar({ open, collapsed, onClose }: SidebarProps) {
           {visibleNavGroups(canView).map(group => (
             <div key={group.label} className="nav-group">
               <div className="nav-group-label"><i className={navIconClass(group.icon)} />{group.label}</div>
-              {group.items.map(item => (
-                <NavLink
-                  key={item.key}
-                  to={item.path}
-                  end={item.path === '/'}
-                  className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
-                  aria-label={item.label}
-                  onClick={() => { hideTip(); onClose(); }}
-                  onMouseEnter={showTip(item.label)}
-                  onMouseLeave={hideTip}
-                >
-                  <i className={navIconClass(item.icon)} /><span>{item.label}</span>
-                  {closedPages.includes(item.page ?? item.key) && (
-                    <i className="fa-solid fa-screwdriver-wrench nav-maintenance" title="หน้านี้กำลังปิดปรับปรุง" aria-label="ปิดปรับปรุง" />
-                  )}
-                  {badgeFor(item.key) > 0 && <em className="nav-badge" aria-label={item.key === 'my-feedback' ? `มีความเคลื่อนไหวใหม่ ${badgeFor(item.key)} เรื่อง` : `ยังไม่ดำเนินการ ${badgeFor(item.key)} เรื่อง`}>{badgeFor(item.key) > 99 ? '99+' : badgeFor(item.key)}</em>}
-                </NavLink>
-              ))}
+              {group.items.map((item, i) => {
+                if (!item.parent) return link(item);
+                // หัวเมนูย่อย: วาดครั้งเดียวที่รายการแรกของ parent นั้น พร้อมลูกทั้งหมด
+                if (group.items[i - 1]?.parent === item.parent) return null;
+                const children = group.items.filter(c => c.parent === item.parent);
+                const parent = NAV_PARENTS[item.parent] ?? { label: item.parent, icon: 'fa-folder' };
+                const hasActive = children.some(c => location.pathname === c.path);
+                const expanded = hasActive || openParents.includes(item.parent);
+                const groupKey = item.parent;
+                return (
+                  <div key={`parent-${groupKey}`} className={`nav-parent${expanded ? ' open' : ''}${hasActive ? ' has-active' : ''}`}>
+                    <button
+                      type="button"
+                      className="nav-link nav-parent-toggle"
+                      aria-expanded={expanded}
+                      aria-label={parent.label}
+                      onClick={() => { if (!hasActive) toggleParent(groupKey); }}
+                      onMouseEnter={showTip(parent.label)}
+                      onMouseLeave={hideTip}
+                    >
+                      <i className={navIconClass(parent.icon)} /><span>{parent.label}</span>
+                      <i className="fa-solid fa-chevron-down nav-parent-caret" aria-hidden="true" />
+                    </button>
+                    {/* วาดไว้ตลอด แล้วยืด/หดความสูงด้วย CSS (นุ่มกว่าใส่/เอาออกทันที) · พับอยู่ = กด Tab ข้ามไป (inert) */}
+                    <div className="nav-children-wrap" inert={!(expanded || collapsed)}>
+                      <div className="nav-children">{children.map(link)}</div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           ))}
         </nav>

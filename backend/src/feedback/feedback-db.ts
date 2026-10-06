@@ -109,9 +109,18 @@ export async function insertFeedback(e: FeedbackEntry, conn?: PoolConnection): P
   return true;
 }
 
+/** เรื่องใหม่ — status ไม่ระบุ = "ยังไม่ดำเนินการ" · ระบุ done = ปิดเรื่องทันที (เช่น ยืนยันข้อมูล) */
+export type NewFeedback = Omit<FeedbackEntry, 'id' | 'time' | 'status'> & { status?: FeedbackStatus };
+
+export function newEntry(entry: NewFeedback): FeedbackEntry {
+  const time = new Date().toISOString();
+  const status = entry.status ?? 'new';
+  return { ...entry, id: randomUUID().slice(0, 8), time, status, ...(status === 'done' ? { doneAt: time } : {}) };
+}
+
 export const dbFeedbackStore = {
-  async add(entry: Omit<FeedbackEntry, 'id' | 'time' | 'status'>): Promise<FeedbackEntry> {
-    const saved: FeedbackEntry = { id: randomUUID().slice(0, 8), time: new Date().toISOString(), status: 'new', ...entry };
+  async add(entry: NewFeedback): Promise<FeedbackEntry> {
+    const saved = newEntry(entry);
     await insertFeedback(saved);
     return saved;
   },

@@ -10,7 +10,7 @@ import ReportChart from '../charts/ReportChart';
 import DualDonutChart from '../charts/DualDonutChart';
 import { useReport } from '../hooks/useReport';
 import { fetchPhysioReport } from '../services/reportService';
-import type { PhysioReport } from '../types/reports';
+import type { PhysioReport, PhysioRightRevenue } from '../types/reports';
 import { formatDmy, formatNumber } from '../utils/format';
 
 /** สีกลุ่มการรักษา: รักษา / รักษา + ฟื้นฟู / ฟื้นฟูสมรรถภาพ / ส่งเสริมและป้องกัน / ไม่ระบุ (ไม่ใช้สีเขียวตามธีมระบบ) */
@@ -39,9 +39,68 @@ function RightsChart({ data, rights, which }: { data: PhysioReport; rights: stri
   );
 }
 
+/** เบิกได้ / เก็บเงิน */
+const CLAIM_COLOR = '#4f46e5';
+const SELFPAY_COLOR = '#f59e0b';
+const baht = (n: number) => `${formatNumber(Math.round(n))} บาท`;
+
+/** ค่ารักษาแยกเบิกได้ / เก็บเงิน + ตารางรายสิทธิ์ — ยอดรวมเท่านั้น ไม่มีข้อมูลรายผู้ป่วย */
+function RevenueBlock({ data, kind, filter }: { data: PhysioReport; kind: 'opd' | 'ipd'; filter: 'all' | PhysioRightRevenue['group'] }) {
+  const r = data.revenue[kind];
+  const total = r.claim.amount + r.selfpay.amount;
+  const rows = r.rights.filter(x => filter === 'all' || x.group === filter);
+  const pct = (n: number) => (total ? `${((n / total) * 100).toFixed(1)}%` : '0%');
+  return (
+    <>
+      <div className="revenue-tiles">
+        <div className="revenue-tile total">
+          <small>ค่ารักษารวม</small>
+          <b>{baht(total)}</b>
+          <span>{formatNumber(r.claim.visits + r.selfpay.visits)} ครั้ง</span>
+        </div>
+        <div className="revenue-tile claim">
+          <small><i className="fa-solid fa-file-invoice" /> เบิกได้</small>
+          <b>{baht(r.claim.amount)}</b>
+          <span>{formatNumber(r.claim.visits)} ครั้ง · {pct(r.claim.amount)}</span>
+        </div>
+        <div className="revenue-tile selfpay">
+          <small><i className="fa-solid fa-hand-holding-dollar" /> เก็บเงิน</small>
+          <b>{baht(r.selfpay.amount)}</b>
+          <span>{formatNumber(r.selfpay.visits)} ครั้ง · {pct(r.selfpay.amount)}</span>
+        </div>
+      </div>
+      <div className="table-responsive">
+        <table className="report-table revenue-table">
+          <thead><tr><th>สิทธิการรักษา</th><th className="center">กลุ่ม</th><th className="num">จำนวนครั้ง</th><th className="num">ค่ารักษา (บาท)</th></tr></thead>
+          <tbody>
+            {rows.map(x => (
+              <tr key={x.code}>
+                <td>{x.name} <small className="muted">({x.code})</small></td>
+                <td className="center"><span className={`revenue-badge ${x.group}`}>{x.group === 'claim' ? 'เบิกได้' : 'เก็บเงิน'}</span></td>
+                <td className="num">{formatNumber(x.visits)}</td>
+                <td className="num">{formatNumber(x.amount)}</td>
+              </tr>
+            ))}
+            {rows.length === 0 && <tr><td colSpan={4} className="center muted">ไม่มีข้อมูลในช่วงนี้</td></tr>}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={2}>รวม</td>
+              <td className="num">{formatNumber(rows.reduce((a, x) => a + x.visits, 0))}</td>
+              <td className="num">{formatNumber(rows.reduce((a, x) => a + x.amount, 0))}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </>
+  );
+}
+
 export default function PhysioPage() {
   const { filter, applyFilter, data, error, refresh } = useReport(fetchPhysioReport);
   const [monthlyKind, setMonthlyKind] = useState<'opd' | 'ipd'>('opd');
+  const [revenueKind, setRevenueKind] = useState<'opd' | 'ipd'>('opd');
+  const [revenueFilter, setRevenueFilter] = useState<'all' | PhysioRightRevenue['group']>('all');
 
   return (
     <>
@@ -148,6 +207,92 @@ export default function PhysioPage() {
                 ])}
               />
             </Panel>
+
+            {/* ค่ารักษา: เบิกได้ / เก็บเงิน */}
+            <section className="report-row cols-2">
+              <Panel
+                title="ค่ารักษากายภาพบำบัด แยกเบิกได้ / เก็บเงิน"
+                subtitle={`ตามสิทธิการรักษา · ${period}`}
+                printable
+              >
+                <div className="revenue-switches no-print">
+                  <div className="segmented">
+                    <button className={revenueKind === 'opd' ? 'active' : ''} onClick={() => setRevenueKind('opd')}>ผู้ป่วยนอก (OPD)</button>
+                    <button className={revenueKind === 'ipd' ? 'active' : ''} onClick={() => setRevenueKind('ipd')}>ผู้ป่วยใน (IPD)</button>
+                  </div>
+                  <div className="segmented">
+                    <button className={revenueFilter === 'all' ? 'active' : ''} onClick={() => setRevenueFilter('all')}>ทั้งหมด</button>
+                    <button className={revenueFilter === 'claim' ? 'active' : ''} onClick={() => setRevenueFilter('claim')}>เบิกได้</button>
+                    <button className={revenueFilter === 'selfpay' ? 'active' : ''} onClick={() => setRevenueFilter('selfpay')}>เก็บเงิน</button>
+                  </div>
+                </div>
+                <RevenueBlock data={data} kind={revenueKind} filter={revenueFilter} />
+              </Panel>
+              <Panel title="ค่ารักษากายภาพบำบัดรายเดือน (ผู้ป่วยนอก)" subtitle={`เบิกได้ / เก็บเงิน แต่ละเดือนของ${fy} (บาท)`} printable>
+                <ReportChart
+                  labels={data.revenue.monthly.labels}
+                  stacked
+                  height={520}
+                  printCategory="เดือน"
+                  series={[
+                    { label: 'เบิกได้', data: data.revenue.monthly.claim, color: CLAIM_COLOR },
+                    { label: 'เก็บเงิน', data: data.revenue.monthly.selfpay, color: SELFPAY_COLOR },
+                  ]}
+                />
+              </Panel>
+            </section>
+
+            {/* นัดหมาย — นับจำนวนเท่านั้น ไม่แสดงรายชื่อผู้ป่วย */}
+            <section className="report-row cols-3">
+              <Panel title="การนัดหมายกายภาพบำบัด" subtitle={period} printable>
+                <DonutPanel
+                  items={[
+                    { label: 'มาตามนัด', value: data.appointments.came },
+                    { label: 'ไม่มาตามนัด', value: data.appointments.noShow },
+                    { label: 'Walk-in (ไม่มีนัด)', value: data.appointments.walkIn },
+                    ...(data.appointments.pendingToday ? [{ label: 'นัดวันนี้ที่ยังไม่มา', value: data.appointments.pendingToday }] : []),
+                  ]}
+                  colors={['#4f46e5', '#e11d48', '#8b5cf6', '#94a3b8']}
+                  center={<><b>{formatNumber(data.appointments.came + data.appointments.noShow + data.appointments.walkIn + data.appointments.pendingToday)}</b><small>ครั้ง</small></>}
+                  valueLabel="จำนวนครั้ง"
+                />
+                <div className="rate-box">
+                  <i className="fa-solid fa-calendar-check" />
+                  <div>
+                    <small>อัตรามาตามนัด</small>
+                    <b>{data.appointments.came + data.appointments.noShow ? Math.round((data.appointments.came / (data.appointments.came + data.appointments.noShow)) * 100) : 0}%</b>
+                  </div>
+                  <div>
+                    <small>นัดล่วงหน้า 30 วัน</small>
+                    <b>{formatNumber(data.appointments.upcoming30)}</b>
+                  </div>
+                </div>
+              </Panel>
+              <Panel title="การนัดหมายรายเดือน" subtitle={`มาตามนัด / ไม่มาตามนัด / Walk-in (${fy})`} printable>
+                <ReportChart
+                  labels={data.appointments.monthly.labels}
+                  stacked
+                  height={300}
+                  printCategory="เดือน"
+                  series={[
+                    { label: 'มาตามนัด', data: data.appointments.monthly.came, color: '#4f46e5' },
+                    { label: 'ไม่มาตามนัด', data: data.appointments.monthly.noShow, color: '#e11d48' },
+                    { label: 'Walk-in', data: data.appointments.monthly.walkIn, color: '#c4b5fd' },
+                  ]}
+                />
+              </Panel>
+              <Panel title="จำนวนนัดตามวันในสัปดาห์" subtitle={`ใช้วางแผนกำลังคน (${fy})`} printable>
+                <ReportChart
+                  labels={data.appointments.weekday.labels}
+                  height={300}
+                  showLegend={false}
+                  showValues
+                  printCategory="วัน"
+                  highlightIndex={data.appointments.weekday.values.indexOf(Math.max(...data.appointments.weekday.values))}
+                  series={[{ label: 'จำนวนนัด', data: data.appointments.weekday.values, color: '#a5b4fc' }]}
+                />
+              </Panel>
+            </section>
           </>
         );
       })()}

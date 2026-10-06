@@ -6,7 +6,53 @@ import Modal from '../../components/Modal';
 import FeedbackTimeline from '../../components/FeedbackTimeline';
 import { ApiError } from '../../services/apiClient';
 import { toast } from '../../utils/toast';
-import { FEEDBACK_CATEGORY, FEEDBACK_CHANGED_EVENT, FEEDBACK_STATUS, feedbackImageUrl, feedbackService, type FeedbackEntry, type FeedbackStatus } from '../../services/feedbackService';
+import { FEEDBACK_CATEGORY, FEEDBACK_CHANGED_EVENT, FEEDBACK_STATUS, feedbackImageUrl, feedbackService, type FeedbackEntry, type FeedbackStatus, type PageConfirmation } from '../../services/feedbackService';
+import { NAV_GROUPS } from '../../routes/navigation';
+
+/** หน้ารายงานทั้งหมด (ชื่อตรงกับตัวเลือก "หน้าที่ยืนยันข้อมูล" ในฟอร์มติดต่อผู้พัฒนา) */
+const REPORT_PAGES = NAV_GROUPS.flatMap(g => g.items)
+  .filter(item => !item.hidden && !item.wip && item.key !== 'contact' && item.key !== 'my-feedback' && item.page !== 'admin');
+
+/** "02/10/2569" */
+const dmy = (iso: string) => { const d = new Date(iso); return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear() + 543}`; };
+
+/** การ์ดสรุป: หน้าไหนมีผู้ใช้ยืนยันว่าใช้ข้อมูลตามระบบแล้ว / หน้าไหนยังไม่มี */
+function ConfirmationSummary({ confirmations }: { confirmations: PageConfirmation[] }) {
+  const byPage = new Map(confirmations.map(c => [c.page, c]));
+  const done = REPORT_PAGES.filter(p => byPage.has(p.label)).length;
+  return (
+    <article className="card-box confirm-summary">
+      <header>
+        <span className="confirm-summary-icon"><i className="fa-solid fa-circle-check" /></span>
+        <div>
+          <strong>หน้าที่ได้รับการยืนยันข้อมูลแล้ว</strong>
+          <small>ผู้ใช้ตรวจสอบแล้ว ใช้ข้อมูลตามที่ระบบแสดง ไม่ต้องแก้ไข (ประเภท "ยืนยันข้อมูล" ในหน้าติดต่อผู้พัฒนา)</small>
+        </div>
+        <span className="confirm-summary-count"><b>{done}</b> / {REPORT_PAGES.length} หน้า</span>
+      </header>
+      <ul className="confirm-pages">
+        {REPORT_PAGES.map(p => {
+          const c = byPage.get(p.label);
+          const latest = c?.people[0];
+          const others = (c?.people.length ?? 0) - 1;
+          return (
+            <li key={p.key} className={c ? 'is-done' : undefined}>
+              <i className={`fa-solid ${p.icon} confirm-page-icon`} />
+              <div>
+                <span className="confirm-page-name">{p.label}</span>
+                {latest
+                  ? <small data-tip={c!.people.map(x => `${x.name}${x.position ? ` (${x.position})` : ''} · ${dmy(x.time)}`).join('\n')}>
+                      <i className="fa-solid fa-check" /> {latest.name} · {dmy(latest.time)}{others > 0 && ` · และอีก ${others} คน`}
+                    </small>
+                  : <small className="muted">ยังไม่มีการยืนยัน</small>}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </article>
+  );
+}
 
 type Filter = 'all' | FeedbackStatus;
 
@@ -25,6 +71,7 @@ function formatTime(iso: string) {
 export default function FeedbackPage() {
   const [filter, setFilter] = useState<Filter>('new');
   const [entries, setEntries] = useState<FeedbackEntry[]>([]);
+  const [confirmations, setConfirmations] = useState<PageConfirmation[]>([]);
   const [loaded, setLoaded] = useState(false);
   const skeletonDone = useMinDelay();
   const [counts, setCounts] = useState<Record<Filter, number>>({ all: 0, new: 0, in_progress: 0, done: 0 });
@@ -39,6 +86,7 @@ export default function FeedbackPage() {
       const result = await feedbackService.list(filter === 'all' ? undefined : filter);
       setEntries(result.entries);
       setCounts(result.counts);
+      setConfirmations(result.confirmations ?? []);
     } catch { /* 401/403 จัดการโดยระบบ login */ }
     setLoaded(true);
   }, [filter]);
@@ -88,6 +136,8 @@ export default function FeedbackPage() {
       />
 
       {!(loaded && skeletonDone) ? <PageSkeleton cards={0} rows={[]} table={6} columns={6} /> : (
+      <>
+      <ConfirmationSummary confirmations={confirmations} />
       <article className="card-box table-card">
         <div className="table-responsive">
           <table className="rank-table feedback-table">
@@ -146,6 +196,7 @@ export default function FeedbackPage() {
           </table>
         </div>
       </article>
+      </>
       )}
 
       <Modal

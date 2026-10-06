@@ -8,12 +8,13 @@ const vary = (value: number, pct = 0.1) => Math.max(0, value * (1 + (Math.random
 const OPD_PER_HOUR = [1.1, 1.2, 1.4, 1, 1, 0.5, 14.1, 25.9, 41.3, 36.2, 23.8, 11.8, 8.3, 26.9, 13.4, 6.1, 4.5, 3.1, 2.5, 2.6, 1.8, 2.1, 1.2, 1.1];
 const ER_SHAPE = [49, 22, 28, 18, 26, 17, 29, 210, 505, 719, 666, 304, 175, 692, 436, 295, 284, 274, 250, 193, 115, 96, 63, 33];
 const IPD_SHAPE = [52, 39, 26, 24, 20, 22, 9, 3, 10, 43, 105, 193, 116, 245, 164, 184, 142, 94, 76, 99, 94, 89, 88, 81];
-const ER_PER_DAY = 61;
+/** er_regist ย้อนหลัง 12 เดือน (ตรวจซ้ำ 06/10/2569) */
+const ER_PER_DAY = 58;
 const IPD_ADMIT_PER_DAY = 5.3;
 const BED_TOTAL = 45;
 // ค่าเฉลี่ยต่อวันจริงตามวันในสัปดาห์ (อาทิตย์ = 0) 90 วันล่าสุด — OPD จาก ovst, ER จาก er_regist
-const OPD_DOW = [66, 283, 260, 239, 328, 308, 68];
-const ER_DOW = [65.8, 59.6, 59.1, 61.3, 57.5, 56.1, 67.5];
+const OPD_DOW = [65, 280, 253, 231, 317, 298, 69];
+const ER_DOW = [65.5, 61.1, 55.5, 61, 59.3, 57.2, 68.8];
 const pct = (now: number, before: number) => (before > 0 ? Math.round(((now - before) / before) * 100) : 0);
 /** สัดส่วนของทั้งวันที่ผ่านไปแล้วถึงชั่วโมงปัจจุบัน (ตามรูปแบบรายชั่วโมงจริง) */
 const shareUntilNow = (perHour: number[]) => {
@@ -112,7 +113,8 @@ export function generateDashboardSnapshot(range: DashboardRange = 'today', start
     er: { total: erTotal, red: erRed, pink: erPink, yellow: erYellow, green: erGreen, white: Math.max(0, erTotal - erRed - erPink - erYellow - erGreen), yesterday: erYesterday, changePct: pct(erTotal, erYesterday * shareUntilNow(ER_SHAPE)) },
     ipd: { total: ipdTotal, admit: ipdAdmit, discharge: ipdDischarge, yesterday: ipdTotal - ipdAdmit + ipdDischarge, occupancyPct, changePct: pct(ipdTotal, ipdTotal - ipdAdmit + ipdDischarge) },
     queue: { avgMinutes: randomBetween(18, 55), waiting: randomBetween(5, 40), done: randomBetween(80, 220), changePct: randomBetween(-15, 20) },
-    referral: { in: 0, out: Math.round(vary(14.6 * Math.min(1, new Date().getHours() / 16), 0.3)) },
+    // referout 30 วันล่าสุด ~12.7 ครั้ง/วัน
+    referral: { in: 0, out: Math.round(vary(12.7 * Math.min(1, new Date().getHours() / 16), 0.3)) },
     revenueOpd: revenue.reduce((sum, item) => sum + item.amount, 0),
     revenueByRight: revenue,
     bed: { free: BED_TOTAL - ipdTotal, total: BED_TOTAL, occupancyPct, patientDays: Math.round(ipdTotal * days * vary(1, 0.05)), days },
