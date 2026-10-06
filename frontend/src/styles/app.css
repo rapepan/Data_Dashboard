@@ -2277,6 +2277,8 @@ button.presence-card:hover { border-color: #c7c4f5; }
 .confirm-page-icon { width: 1.1rem; text-align: center; margin-top: .2rem; color: var(--text-soft); }
 .confirm-pages li.is-done .confirm-page-icon { color: var(--plum); }
 .confirm-page-name { font-size: .85rem; font-weight: 600; }
+.confirm-page-parent { font-size: .7rem; color: var(--text-soft); line-height: 1.2; }
+.confirm-pages li.is-wip { opacity: .6; background: var(--surface-2, #f8fafc); }
 .confirm-pages small { font-size: .76rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .confirm-pages li.is-done small { color: var(--plum); }
 

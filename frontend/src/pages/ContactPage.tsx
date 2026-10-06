@@ -7,7 +7,7 @@ import { useMinDelay } from '../hooks/useMinDelay';
 import Select from '../components/ui/Select';
 import { useAuth } from '../auth/AuthContext';
 import { DEVELOPER_TEAM, type DeveloperContact } from '../config/contact';
-import { NAV_GROUPS } from '../routes/navigation';
+import { NAV_GROUPS, NAV_PARENTS } from '../routes/navigation';
 import { ApiError, apiGet } from '../services/apiClient';
 import { FEEDBACK_CATEGORY, feedbackService, type FeedbackCategory } from '../services/feedbackService';
 import ImageAttach, { type AttachedImage } from '../components/ImageAttach';
@@ -21,7 +21,8 @@ const PAGE_OPTIONS = [
   { value: 'หน้าเข้าสู่ระบบ', label: 'หน้าเข้าสู่ระบบ' },
   ...NAV_GROUPS.flatMap(g => g.items)
     .filter(item => !item.hidden && !item.wip && item.key !== 'contact' && item.key !== 'my-feedback' && item.page !== 'admin')
-    .map(item => ({ value: item.label, label: item.label })),
+    // เมนูย่อย: แสดงชื่อหัวเมนูนำหน้า (ค่าที่บันทึกยังเป็นชื่อหน้าเดิม)
+    .map(item => ({ value: item.label, label: item.parent ? `${NAV_PARENTS[item.parent]?.label} › ${item.label}` : item.label })),
 ];
 
 const MESSAGE_MAX = 5000;

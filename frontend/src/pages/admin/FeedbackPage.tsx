@@ -7,11 +7,12 @@ import FeedbackTimeline from '../../components/FeedbackTimeline';
 import { ApiError } from '../../services/apiClient';
 import { toast } from '../../utils/toast';
 import { FEEDBACK_CATEGORY, FEEDBACK_CHANGED_EVENT, FEEDBACK_STATUS, feedbackImageUrl, feedbackService, type FeedbackEntry, type FeedbackStatus, type PageConfirmation } from '../../services/feedbackService';
-import { NAV_GROUPS } from '../../routes/navigation';
+import { NAV_GROUPS, NAV_PARENTS } from '../../routes/navigation';
 
-/** หน้ารายงานทั้งหมด (ชื่อตรงกับตัวเลือก "หน้าที่ยืนยันข้อมูล" ในฟอร์มติดต่อผู้พัฒนา) */
-const REPORT_PAGES = NAV_GROUPS.flatMap(g => g.items)
-  .filter(item => !item.hidden && !item.wip && item.key !== 'contact' && item.key !== 'my-feedback' && item.page !== 'admin');
+/** หน้ารายงานทั้งหมด (ชื่อตรงกับตัวเลือก "หน้าที่ยืนยันข้อมูล" ในฟอร์มติดต่อผู้พัฒนา) · หน้ากำลังพัฒนาแสดงไว้แต่ไม่นับ */
+const ALL_PAGES = NAV_GROUPS.flatMap(g => g.items)
+  .filter(item => !item.hidden && item.key !== 'contact' && item.key !== 'my-feedback' && item.page !== 'admin');
+const REPORT_PAGES = ALL_PAGES.filter(item => !item.wip);
 
 /** "02/10/2569" */
 const dmy = (iso: string) => { const d = new Date(iso); return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear() + 543}`; };
@@ -31,7 +32,18 @@ function ConfirmationSummary({ confirmations }: { confirmations: PageConfirmatio
         <span className="confirm-summary-count"><b>{done}</b> / {REPORT_PAGES.length} หน้า</span>
       </header>
       <ul className="confirm-pages">
-        {REPORT_PAGES.map(p => {
+        {ALL_PAGES.map(p => {
+          const parent = p.parent ? NAV_PARENTS[p.parent]?.label : undefined;
+          if (p.wip) return (
+            <li key={p.key} className="is-wip">
+              <i className={`fa-solid ${p.icon} confirm-page-icon`} />
+              <div>
+                {parent && <span className="confirm-page-parent">{parent}</span>}
+                <span className="confirm-page-name">{p.label}</span>
+                <small className="muted">กำลังพัฒนา (ไม่นับ)</small>
+              </div>
+            </li>
+          );
           const c = byPage.get(p.label);
           const latest = c?.people[0];
           const others = (c?.people.length ?? 0) - 1;
@@ -39,6 +51,7 @@ function ConfirmationSummary({ confirmations }: { confirmations: PageConfirmatio
             <li key={p.key} className={c ? 'is-done' : undefined}>
               <i className={`fa-solid ${p.icon} confirm-page-icon`} />
               <div>
+                {parent && <span className="confirm-page-parent">{parent}</span>}
                 <span className="confirm-page-name">{p.label}</span>
                 {latest
                   ? <small data-tip={c!.people.map(x => `${x.name}${x.position ? ` (${x.position})` : ''} · ${dmy(x.time)}`).join('\n')}>
