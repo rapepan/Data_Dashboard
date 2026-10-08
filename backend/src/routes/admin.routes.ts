@@ -16,6 +16,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
   fastify.delete('/admin/system/notices/:id', systemController.deleteNotice);
   fastify.put('/admin/system/maintenance', systemController.setMaintenance);
   fastify.put('/admin/system/page-maintenance', systemController.setPageMaintenance);
+  fastify.post('/admin/system/restart', systemController.restart);
   fastify.post('/admin/users/:loginname/logout', usersController.forceLogout);
   fastify.get('/admin/feedback', feedbackController.list);
   fastify.get('/admin/feedback/summary', feedbackController.summary);

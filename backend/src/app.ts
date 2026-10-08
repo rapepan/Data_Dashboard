@@ -3,7 +3,8 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import { registerRoutes } from './routes';
 import { registerErrorHandler } from './middleware/error-handler';
-import { currentUser, registerAuth } from './middleware/auth';
+import { currentUser, isBackgroundRequest, registerAuth } from './middleware/auth';
+import { describeRequest } from './utils/request-labels';
 import { cleanIp, logger } from './utils/logger';
 
 /**
@@ -18,7 +19,9 @@ export async function buildApp({ logRequests = true } = {}) {
     app.addHook('onResponse', async (req, reply) => {
       // ช่องสัญญาณสดเปิดค้างเป็นชั่วโมง — ไม่พิมพ์ (จำนวนที่ต่ออยู่ดูในสรุปรายชั่วโมง)
       if (req.url.startsWith('/api/system/events')) return;
-      logger.request(req.method, reply.statusCode, req.url, currentUser(req)?.loginname ?? 'guest', cleanIp(req.ip), Math.round(reply.elapsedTime));
+      const purpose = typeof req.headers['x-purpose'] === 'string' ? req.headers['x-purpose'] : undefined;
+      const info = describeRequest(req.method, req.url, isBackgroundRequest(req), purpose);
+      logger.request(req.method, reply.statusCode, req.url, currentUser(req)?.loginname ?? 'guest', cleanIp(req.ip), Math.round(reply.elapsedTime), info);
     });
   }
 

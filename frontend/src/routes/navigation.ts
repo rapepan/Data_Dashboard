@@ -26,7 +26,7 @@ export const NAV_GROUPS: NavGroup[] = [
     { key: 'dental', path: '/dental', icon: 'fa-tooth', label: 'ทันตกรรม (Dental)' },
     { key: 'physio', path: '/physio', icon: 'fa-wheelchair', label: 'กายภาพบำบัด (Physio)' },
     { key: 'tele', path: '/telemedicine', icon: 'fa-video', label: 'Telemedicine', parent: 'telehealth' },
-    { key: 'teleframe', page: 'tele', path: '/teleframe', icon: 'fa-display', label: 'Teleframe', parent: 'telehealth', wip: true },
+    { key: 'telepharmacy', page: 'tele', path: '/telepharmacy', icon: 'fa-display', label: 'Telepharmacy', parent: 'telehealth', wip: true },
     { key: 'postal', path: '/postal-drug', icon: 'fa-truck-fast', label: 'การส่งยาทางไปรษณีย์', parent: 'telehealth' },
     { key: 'thaimed', path: '/thai-medicine', icon: 'fa-leaf', label: 'แพทย์แผนไทย / แผนจีน (TTCM)' },
     { key: 'drugbudget', path: '/drug-budget', icon: 'fa-pills', label: 'ปริมาณการใช้ยา (Drug)' },

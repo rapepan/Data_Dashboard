@@ -5,6 +5,7 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import DatePicker from '../../components/ui/DatePicker';
 import TimePicker from '../../components/ui/TimePicker';
 import { NoticeBar, countdown, formatUntil, formatWindow } from '../../components/system/SystemNotices';
+import RestartCard from '../../components/system/RestartCard';
 import { useMinDelay } from '../../hooks/useMinDelay';
 import { check as refreshSystemStatus } from '../../hooks/useSystemStatus';
 import { ApiError } from '../../services/apiClient';
@@ -464,6 +465,14 @@ export default function SystemPage() {
               </button>
             </div>
           </article>
+
+          {/* รีสตาร์ทระบบ */}
+          <RestartCard
+            restart={data.restart}
+            liveClients={data.liveClients}
+            onDone={async () => { await load(); setNotice({ tone: 'ok', text: 'รีสตาร์ทระบบเสร็จแล้ว — กลับมาใช้งานได้ตามปกติ' }); }}
+            onError={text => setNotice({ tone: 'error', text })}
+          />
 
           {/* รายการประกาศ */}
           <article className="card-box table-card">

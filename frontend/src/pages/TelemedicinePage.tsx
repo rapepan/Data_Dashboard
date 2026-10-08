@@ -14,7 +14,7 @@ const CLINIC_COLORS = ['#4f46e5', '#8b5cf6', '#e11d48', '#0ea5e9', '#f59e0b', '#
 const withUnit = (value: number | string, unit: string) => <>{typeof value === 'number' ? formatNumber(value) : value} <small className="stat-unit">{unit}</small></>;
 
 export default function TelemedicinePage() {
-  const { filter, applyFilter, data, error, refresh } = useReport(fetchTelemedicineReport);
+  const { filter, applyFilter, data, error, refresh, compare } = useReport(fetchTelemedicineReport, { compare: true });
 
   return (
     <>
@@ -57,7 +57,7 @@ export default function TelemedicinePage() {
               />
               <StatCard
                 accent="amber" icon="fa-calculator" tooltip="จำนวนผู้รับบริการในช่วงที่เลือก หารด้วยจำนวนวันทำการ"
-                title="เฉลี่ยจำนวนผู้รับบริการทางไกล / วัน" value={withUnit(data.range.avgPerDay.toFixed(1), 'ราย/วัน')}
+                title="เฉลี่ยจำนวนผู้รับบริการทางไกล / วัน" value={withUnit(data.range.avgPerDay.toFixed(1), 'ราย/วัน')} change={compare(r => r.range.avgPerDay)}
                 parts={[
                   { label: 'รวมในช่วงที่เลือก', value: data.range.total, tone: 'indigo' },
                   { label: 'วันทำการ', value: data.range.workdays, tone: 'sky' },

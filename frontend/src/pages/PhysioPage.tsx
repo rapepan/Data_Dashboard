@@ -97,7 +97,7 @@ function RevenueBlock({ data, kind, filter }: { data: PhysioReport; kind: 'opd' 
 }
 
 export default function PhysioPage() {
-  const { filter, applyFilter, data, error, refresh } = useReport(fetchPhysioReport);
+  const { filter, applyFilter, data, error, refresh, compare } = useReport(fetchPhysioReport, { compare: true });
   const [monthlyKind, setMonthlyKind] = useState<'opd' | 'ipd'>('opd');
   const [revenueKind, setRevenueKind] = useState<'opd' | 'ipd'>('opd');
   const [revenueFilter, setRevenueFilter] = useState<'all' | PhysioRightRevenue['group']>('all');
@@ -122,7 +122,7 @@ export default function PhysioPage() {
           <>
             {/* ภาพรวม */}
             <section className="report-row cols-3">
-              <CountSummaryCard colors={CATEGORY_COLORS} accent="indigo" icon="fa-calendar-days" title="ผู้ป่วยกายภาพบำบัดรวมในช่วงที่เลือก" note={period} data={data.range} categories={data.categories} showSplit />
+              <CountSummaryCard colors={CATEGORY_COLORS} accent="indigo" icon="fa-calendar-days" title="ผู้ป่วยกายภาพบำบัดรวมในช่วงที่เลือก" note={period} data={data.range} categories={data.categories} showSplit change={compare(r => r.range.total.persons)} />
               <CountSummaryCard colors={CATEGORY_COLORS} accent="plum" icon="fa-calendar-check" title="ผู้ป่วยกายภาพบำบัดประจำเดือน" note={monthNote} data={data.month} categories={data.categories} showSplit />
               <CountSummaryCard colors={CATEGORY_COLORS} accent="amber" icon="fa-clock-rotate-left" title="ผู้ป่วยกายภาพบำบัดประจำวัน" note={dayNote} data={data.day} categories={data.categories} showSplit />
             </section>
@@ -157,7 +157,7 @@ export default function PhysioPage() {
             {/* เฉพาะผู้ป่วยใน */}
             <h2 className="section-heading"><i className="fa-solid fa-bed-pulse" /> ข้อมูลสถิติเฉพาะผู้ป่วยใน (IPD Only)</h2>
             <section className="report-row cols-3">
-              <CountSummaryCard colors={CATEGORY_COLORS} accent="plum" icon="fa-bed-pulse" title="ผู้ป่วยในกายภาพบำบัดรวมในช่วงที่เลือก" note={period} data={data.ipdOnly.range} categories={data.categories} />
+              <CountSummaryCard colors={CATEGORY_COLORS} accent="plum" icon="fa-bed-pulse" title="ผู้ป่วยในกายภาพบำบัดรวมในช่วงที่เลือก" note={period} data={data.ipdOnly.range} categories={data.categories} change={compare(r => r.ipdOnly.range.total.persons)} />
               <CountSummaryCard colors={CATEGORY_COLORS} accent="plum" icon="fa-calendar-check" title="ผู้ป่วยในกายภาพบำบัดประจำเดือน" note={monthNote} data={data.ipdOnly.month} categories={data.categories} />
               <CountSummaryCard colors={CATEGORY_COLORS} accent="plum" icon="fa-clock-rotate-left" title="ผู้ป่วยในกายภาพบำบัดประจำวัน" note={dayNote} data={data.ipdOnly.day} categories={data.categories} />
             </section>

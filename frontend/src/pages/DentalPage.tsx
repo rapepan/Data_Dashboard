@@ -1,7 +1,7 @@
 import FilterBar from '../components/FilterBar';
 import PageHeader from '../components/PageHeader';
 import PageSkeleton from '../components/PageSkeleton';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import Panel from '../components/report/Panel';
 import TopLimitSelect from '../components/report/TopLimitSelect';
 import DonutPanel from '../components/report/DonutPanel';
@@ -22,16 +22,18 @@ interface SummaryCardProps {
   note: string;
   data: DentalBreakdown;
   categories: string[];
+  change?: ReactNode;
 }
 
 /** การ์ดสรุป: จำนวนผู้ป่วย + จำนวนครั้งแยก 5 ประเภท */
-function SummaryCard({ accent, icon, title, note, data, categories }: SummaryCardProps) {
+function SummaryCard({ accent, icon, title, note, data, categories, change }: SummaryCardProps) {
   return (
     <article className="card-box dental-card" data-accent={accent}>
       <div className="dental-card-head">
         <div>
           <span className="dental-card-title">{title}</span>
           <span className="dental-card-value">{formatNumber(data.patients)} <small>ราย</small></span>
+          {change && <span className="card-change">{change}</span>}
           <span className="dental-card-note">{note}</span>
         </div>
         <span className="card-icon lg"><i className={`fa-solid ${icon}`} /></span>
@@ -74,7 +76,7 @@ function ProcedurePanel({ items, fiscalYear }: { items: LabelValue[]; fiscalYear
 }
 
 export default function DentalPage() {
-  const { filter, applyFilter, data, error, refresh } = useReport(fetchDentalReport);
+  const { filter, applyFilter, data, error, refresh, compare } = useReport(fetchDentalReport, { compare: true });
 
   return (
     <>
@@ -93,7 +95,7 @@ export default function DentalPage() {
               <SummaryCard
                 accent="indigo" icon="fa-calendar-days" title="ผู้ป่วยทันตกรรมรวมในช่วงที่เลือก"
                 note={`${formatDmy(data.start)} – ${formatDmy(data.end)}`}
-                data={data.range} categories={data.categories}
+                data={data.range} categories={data.categories} change={compare(r => r.range.patients)}
               />
               <SummaryCard
                 accent="plum" icon="fa-calendar-check" title="ผู้ป่วยทันตกรรมประจำเดือน"

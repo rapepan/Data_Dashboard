@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import FilterBar from '../components/FilterBar';
 import PageHeader from '../components/PageHeader';
 import PageSkeleton from '../components/PageSkeleton';
@@ -22,7 +22,7 @@ const TOTAL_COLOR = '#4f46e5';
 
 const show = (value: Minutes) => (value == null ? '-' : formatDuration(value));
 
-function WaitTile({ label, minutes, icon, color, highlight }: { label: string; minutes: Minutes; icon: string; color: string; highlight?: boolean }) {
+function WaitTile({ label, minutes, icon, color, highlight, change }: { label: string; minutes: Minutes; icon: string; color: string; highlight?: boolean; change?: ReactNode }) {
   return (
     <article className={`card-box wait-tile${highlight ? ' highlight' : ''}`} style={{ ['--c' as string]: color }}>
       <span className="wait-icon"><i className={`fa-solid ${icon}`} /></span>
@@ -30,13 +30,14 @@ function WaitTile({ label, minutes, icon, color, highlight }: { label: string; m
         <span className="wait-label">{label}</span>
         <b className="wait-time">{show(minutes)}</b>
         <small>{minutes == null ? 'ไม่มีข้อมูล' : `(~${minutes.toFixed(1)} นาที)`}</small>
+        {change}
       </div>
     </article>
   );
 }
 
 export default function QueuePage() {
-  const { filter, applyFilter, data, error, refresh } = useReport(fetchQueueReport);
+  const { filter, applyFilter, data, error, refresh, compare } = useReport(fetchQueueReport, { compare: true });
   const [showMonthlyChart, setShowMonthlyChart] = useState(false);
 
   return (
@@ -55,9 +56,9 @@ export default function QueuePage() {
           <>
             <section className="grid-7">
               {data.steps.map((step, i) => (
-                <WaitTile key={step} label={step} minutes={data.average.steps[i]} icon={STEP_STYLE[i].icon} color={STEP_STYLE[i].color} />
+                <WaitTile key={step} label={step} minutes={data.average.steps[i]} icon={STEP_STYLE[i].icon} color={STEP_STYLE[i].color} change={compare(r => r.average.steps[i], 'down')} />
               ))}
-              <WaitTile label="รวมเวลาทั้งหมด" minutes={data.average.total} icon="fa-stopwatch" color={TOTAL_COLOR} highlight />
+              <WaitTile label="รวมเวลาทั้งหมด" minutes={data.average.total} icon="fa-stopwatch" color={TOTAL_COLOR} highlight change={compare(r => r.average.total, 'down')} />
             </section>
 
             <Panel

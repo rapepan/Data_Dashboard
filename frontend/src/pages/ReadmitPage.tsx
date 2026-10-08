@@ -5,7 +5,7 @@ import PageSkeleton from '../components/PageSkeleton';
 import IcdTopSection from '../components/report/IcdTopSection';
 import Select from '../components/ui/Select';
 import { useReport } from '../hooks/useReport';
-import { fetchReadmitReport } from '../services/reportService';
+import { fetchReadmitReport, type FetchOptions } from '../services/reportService';
 import { formatDmy, formatNumber } from '../utils/format';
 
 const READMIT_COLOR = '#e11d48';
@@ -13,8 +13,8 @@ const READMIT_COLOR = '#e11d48';
 export default function ReadmitPage() {
   const [ward, setWard] = useState('all');
   // เปลี่ยนหอผู้ป่วย → fetcher เปลี่ยน → useReport โหลดใหม่
-  const fetcher = useCallback((start: string, end: string) => fetchReadmitReport(start, end, ward), [ward]);
-  const { filter, applyFilter, data, lastData, error, refresh } = useReport(fetcher);
+  const fetcher = useCallback((start: string, end: string, opts?: FetchOptions) => fetchReadmitReport(start, end, ward, opts), [ward]);
+  const { filter, applyFilter, data, lastData, error, refresh, compare } = useReport(fetcher, { compare: true });
 
   return (
     <>
@@ -55,6 +55,7 @@ export default function ReadmitPage() {
                   <div>
                     <span className="dental-card-title">จำนวน RE-ADMIT ทั้งหมด (ครั้ง)</span>
                     <span className="dental-card-value">{formatNumber(data.visits)} <small>ครั้ง</small></span>
+                    <span className="card-change">{compare(r => r.visits, 'down')}</span>
                   </div>
                   <span className="card-icon lg"><i className="fa-solid fa-arrows-rotate" /></span>
                 </div>
@@ -65,6 +66,7 @@ export default function ReadmitPage() {
                   <div>
                     <span className="dental-card-title">จำนวน RE-ADMIT ทั้งหมด (คน)</span>
                     <span className="dental-card-value">{formatNumber(data.persons)} <small>คน</small></span>
+                    <span className="card-change">{compare(r => r.persons, 'down')}</span>
                   </div>
                   <span className="card-icon lg"><i className="fa-solid fa-user-injured" /></span>
                 </div>

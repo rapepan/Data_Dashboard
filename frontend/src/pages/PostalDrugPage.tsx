@@ -19,7 +19,7 @@ const Empty = () => <p className="empty-note"><i className="fa-solid fa-inbox" /
 
 /** การส่งยาทางไปรษณีย์ (ส่งยาถึงบ้านผู้ป่วย) */
 export default function PostalDrugPage() {
-  const { filter, applyFilter, data, error, refresh } = useReport(fetchPostalDrugReport);
+  const { filter, applyFilter, data, error, refresh, compare } = useReport(fetchPostalDrugReport, { compare: true });
 
   return (
     <>
@@ -38,7 +38,7 @@ export default function PostalDrugPage() {
             <section className="grid-4">
               <StatCard
                 accent="indigo" icon="fa-truck-fast" tooltip="จำนวนครั้งที่ส่งยาทางไปรษณีย์ในช่วงวันที่ที่เลือก"
-                title="ส่งยาในช่วงที่เลือก" value={withUnit(data.range.total, 'ครั้ง')}
+                title="ส่งยาในช่วงที่เลือก" value={withUnit(data.range.total, 'ครั้ง')} change={compare(r => r.range.total)}
                 parts={[
                   { label: 'ผู้ป่วย', value: data.range.patients, display: `${formatNumber(data.range.patients)} คน`, tone: 'sky' },
                   { label: 'รายการยา', value: data.range.items, display: `${formatNumber(data.range.items)} รายการ`, tone: 'plum' },

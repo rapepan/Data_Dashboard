@@ -7,6 +7,8 @@ import HBarList from '../components/report/HBarList';
 import DonutPanel from '../components/report/DonutPanel';
 import StatusPill, { StatusIcon } from '../components/report/StatusPill';
 import ReportChart from '../charts/ReportChart';
+import ChangeBadge from '../components/report/ChangeBadge';
+import { previousRange } from '../utils/compare';
 import { useCallback, useEffect, useState } from 'react';
 import AppointmentClinicTable from '../components/report/AppointmentClinicTable';
 import DatePicker from '../components/ui/DatePicker';
@@ -89,6 +91,58 @@ export default function OpdPage() {
             <MetricTile accent="amber" icon="fa-user-doctor" label="เวลาเฉลี่ยจนแพทย์ตรวจเสร็จ" metric={data.kpis.avgDoctor} unit="นาที" goodWhen="down" />
             {FEATURES.satisfaction && <MetricTile accent="indigo" icon="fa-face-smile" label="ความพึงพอใจผู้ป่วย" metric={data.kpis.satisfaction} display={<>{data.kpis.satisfaction.value}<small>/ 5</small></>} />}
           </section>
+
+          {/* ใบสั่งยาที่มียา ต่อวัน — ข้อมูลรุ่นเก่า (ที่พักผลก่อนอัปเดต) ไม่มีส่วนนี้ ข้ามไปไม่ให้หน้าพัง */}
+          {data.prescriptions && (() => {
+            const rx = data.prescriptions;
+            return (
+              <Panel
+                printable
+                num={num()}
+                className="mb-row"
+                title="ใบสั่งยาที่มียา ต่อวัน"
+                subtitle={<>1 ใบ = ผู้ป่วยนอก 1 ครั้งที่ได้รับยา· {formatDmy(data.start)} – {formatDmy(data.end)}</>}
+              >
+                <div className="rx-summary">
+                  <div className="rx-main">
+                    <span>เฉลี่ยต่อวันทำการ (จ.–ศ.)</span>
+                    <b>{rx.perWorkday.value.toLocaleString('en-US')} <small>ใบ/วัน</small></b>
+                    <ChangeBadge change={rx.perWorkday.change} range={previousRange(data.start, data.end)} />
+                  </div>
+                  <div>
+                    <span>เฉลี่ยเสาร์–อาทิตย์</span>
+                    <b>{rx.perWeekend === null ? '–' : <>{rx.perWeekend.toLocaleString('en-US')} <small>ใบ/วัน</small></>}</b>
+                    <small>{rx.weekendDays} วัน</small>
+                  </div>
+                  <div>
+                    <span>รวมทั้งช่วง</span>
+                    <b>{rx.total.toLocaleString('en-US')} <small>ใบ</small></b>
+                    <small>วันทำการ {rx.workdays} วัน · หยุด {rx.weekendDays} วัน</small>
+                  </div>
+                  <div>
+                    <span>คิดเป็นของผู้ป่วยนอก</span>
+                    <b>{rx.pct}%</b>
+                    <small>จาก {rx.visits.toLocaleString('en-US')} ครั้ง</small>
+                  </div>
+                </div>
+                <ReportChart
+                  labels={rx.daily.dates.map(d => formatDmy(d).slice(0, 5))}
+                  stacked
+                  height={280}
+                  printCategory="วันที่"
+                  rightAxis={{ suffix: '%', min: 0, max: 100 }}
+                  series={[
+                    { label: 'มียา (ใบ)', data: rx.daily.withDrug, color: C.indigo },
+                    { label: 'ไม่มียา (ครั้ง)', data: rx.daily.noDrug, color: '#cbd5e1' },
+                    { label: '% ที่ได้รับยา', type: 'line', axis: 'right', color: C.rose, data: rx.daily.withDrug.map((w, i) => {
+                      const all = w + rx.daily.noDrug[i];
+                      return all ? Math.round((w / all) * 1000) / 10 : null;
+                    }) },
+                  ]}
+                />
+              </Panel>
+            );
+          })()}
 
           <section className="report-row cols-3">
             {/* 2. ตามเวลา */}

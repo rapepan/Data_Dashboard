@@ -14,7 +14,7 @@ import { isNewerVersion } from '../../utils/version';
  * - กล่องแจ้งเวอร์ชันใหม่ (หน้าเว็บที่เปิดค้างไว้เป็นรุ่นเก่า) + "มีอะไรใหม่"
  */
 export default function SystemLayer() {
-  const { status, unreachable } = useSystemStatus();
+  const { status, unreachable, restartingSince } = useSystemStatus();
   const { user, status: authStatus } = useAuth();
   const [hiddenVersion, setHiddenVersion] = useState<string | null>(null);
   const isAdmin = user?.role === 'admin';
@@ -30,6 +30,12 @@ export default function SystemLayer() {
           <i className="fa-solid fa-screwdriver-wrench" />
           <span><b>ระบบอยู่ในโหมดปิดปรับปรุง</b> — ผู้ใช้ทั่วไปเข้าไม่ได้ (ผู้ดูแลยังใช้งานได้){maintenance.until && ` · ปิดเองเวลา ${formatUntil(maintenance.until)}`}{maintenance.message && ` · ${maintenance.message}`}</span>
           <Link to="/admin/system">ไปปิดโหมด</Link>
+        </div>
+      )}
+      {restartingSince !== null && (
+        <div className="system-notice level-warning restart-notice" role="status">
+          <i className="fa-solid fa-rotate fa-spin" />
+          <span><b>ระบบกำลังเริ่มใหม่</b> — รอสักครู่ หน้าเว็บจะเชื่อมต่อกลับเองเมื่อพร้อม (ไม่ต้องรีเฟรช)</span>
         </div>
       )}
       {status && <SystemNotices notices={status.notices} />}

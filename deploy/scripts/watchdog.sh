@@ -6,7 +6,7 @@
 # ตั้งให้รันทุกนาที (crontab -e ของบัญชีที่รัน backend):
 #   * * * * * bash /opt/bsth-dashboard/deploy/scripts/watchdog.sh
 # ปลายทาง: TELEGRAM_ALERT_CHAT_ID ใน backend/.env (เว้นว่าง = TELEGRAM_CHAT_ID)
-# ทดสอบส่ง:  bash deploy/scripts/watchdog.sh --test
+# ทดสอบส่ง:  bash deploy/scripts/watchdog.sh --test   (ไป TELEGRAM_TEST_CHAT_ID ถ้าตั้งไว้)
 # ข้อจำกัด: ถ้าทั้งเครื่อง server ดับ / เครือข่ายขาด สคริปต์นี้ก็ส่งไม่ได้ — ต้องเฝ้าจากเครื่องอื่น
 set -uo pipefail
 
@@ -35,6 +35,9 @@ send() {
 thai_time() { date -u -d "@$(( $1 + 25200 ))" '+%d/%m/%Y %H:%M' 2>/dev/null | awk -F/ '{ split($3, a, " "); printf "%s/%s/%d %s", $1, $2, a[1] + 543, a[2] }'; }
 
 if [ "${1:-}" = "--test" ]; then
+  # ข้อความทดสอบไปแชททดสอบ (เช่น ส่วนตัว) ถ้าตั้งไว้ — ไม่รบกวนกลุ่ม
+  TEST_CHATS="$(env_get TELEGRAM_TEST_CHAT_ID)"
+  [ -n "$TEST_CHATS" ] && CHATS="$TEST_CHATS"
   send "✅ <b>DATA BSTH</b>
 ทดสอบการแจ้งเตือนระบบล่ม — ตั้งค่าถูกต้อง ($(hostname))"
   echo "ส่งข้อความทดสอบแล้ว (ถ้าตั้งค่า Telegram ไว้)"; exit 0

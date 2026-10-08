@@ -1,7 +1,7 @@
 /**
  * ตัวช่วยตั้งค่า Telegram
  *   npm run telegram:chat-id  → แสดงแชต/กลุ่มที่บอทเห็น (พิมพ์ข้อความในกลุ่มก่อน 1 ครั้ง) เอาเลข id ไปใส่ TELEGRAM_CHAT_ID
- *   npm run telegram:test     → ส่งข้อความทดสอบไปทุกปลายทางใน TELEGRAM_CHAT_ID
+ *   npm run telegram:test     → ส่งข้อความทดสอบไป TELEGRAM_TEST_CHAT_ID (เช่น แชทส่วนตัว) · ไม่ได้ตั้ง = TELEGRAM_CHAT_ID
  */
 import '../src/env';
 import { notifyService } from '../src/services/notify.service';
@@ -35,6 +35,7 @@ async function main() {
   if (!token) throw new Error('ยังไม่ได้ตั้ง TELEGRAM_BOT_TOKEN ใน backend/.env');
   if (process.argv[2] === 'chat-id') return listChats(token);
   if (!notifyService.isConfigured()) throw new Error('ยังไม่ได้ตั้ง TELEGRAM_CHAT_ID ใน backend/.env');
+  console.log(`ส่งข้อความทดสอบไป: ${notifyService.testTargets().join(', ')}`);
   await notifyService.test();
 }
 

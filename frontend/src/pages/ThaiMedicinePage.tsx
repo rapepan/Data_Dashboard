@@ -23,7 +23,7 @@ const RIGHT_COLORS = ['#4f46e5', '#8b5cf6', '#0ea5e9', '#f59e0b', '#94a3b8'];
 const money = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function ThaiMedicinePage() {
-  const { filter, applyFilter, data, error, refresh } = useReport(fetchThaiMedicineReport);
+  const { filter, applyFilter, data, error, refresh, compare } = useReport(fetchThaiMedicineReport, { compare: true });
 
   return (
     <>
@@ -47,13 +47,13 @@ export default function ThaiMedicinePage() {
 
             {/* บริการ: นวด/ประคบสมุนไพร, อบสมุนไพร, ฟื้นฟูหลังคลอด, นวดเท้า-พอกเข่า */}
             <section className="report-row cols-3">
-              <CountSummaryCard colors={SERVICE_COLORS} accent="indigo" icon="fa-leaf" title="ผู้รับบริการแผนไทยรวม" note={period} data={data.range} categories={data.categories} />
+              <CountSummaryCard colors={SERVICE_COLORS} accent="indigo" icon="fa-leaf" title="ผู้รับบริการแผนไทยรวม" note={period} data={data.range} categories={data.categories} change={compare(r => r.range.total.persons)} />
               <CountSummaryCard colors={SERVICE_COLORS} accent="plum" icon="fa-calendar-check" title="ผู้รับบริการเดือนนี้" note={`สถิติสะสมทั้งเดือน (${formatDmy(data.month.start)} – ${formatDmy(data.month.end)})`} data={data.month} categories={data.categories} />
               <CountSummaryCard colors={SERVICE_COLORS} accent="amber" icon="fa-clock-rotate-left" title="ผู้รับบริการวันนี้" note={`ประจำวันที่ ${formatDmy(data.day.date)}`} data={data.day} categories={data.categories} />
             </section>
 
             {/* ผู้ป่วยนอกโรคทางแพทย์แผนไทย: ต่อวัน / รายเดือน / รวม + 10 อันดับโรค */}
-            <ClinicOpdBlock data={data.thaiOpd} clinic="แพทย์แผนไทย" color={THAI_COLOR} period={period} fiscalLabel={fiscalLabel} />
+            <ClinicOpdBlock data={data.thaiOpd} clinic="แพทย์แผนไทย" color={THAI_COLOR} period={period} fiscalLabel={fiscalLabel} compare={pick => compare(r => pick(r.thaiOpd))} />
 
             <Panel
               title="จำนวนครั้งแยกตามสิทธิการรักษา แต่ละเดือน"
@@ -110,6 +110,7 @@ export default function ThaiMedicinePage() {
               period={period}
               fiscalLabel={fiscalLabel}
               kind="ipd"
+              compare={pick => compare(r => pick(r.chinese))}
               extraCard={
                 <KpiCard
                   accent="rose"
@@ -120,6 +121,7 @@ export default function ThaiMedicinePage() {
                   badgeIcon="fa-calendar-week"
                   badge={period}
                   note={`เดือนนี้ ${formatNumber(imc.month.persons)} · วันนี้ ${formatNumber(imc.day.persons)} คน`}
+                  change={compare(r => r.chinese.imc.range.persons)}
                 />
               }
             />

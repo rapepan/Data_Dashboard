@@ -30,6 +30,19 @@ export interface AdminSystem {
   /** หน้าที่เลือกปิดเฉพาะหน้าได้ */
   maintainablePages: string[];
   notices: (SystemNotice & { createdBy: string; createdAt: string; autoMaintenance: boolean; autoStartedAt: string | null })[];
+  /** ปุ่มรีสตาร์ท — supported = มีตัวเปิดระบบกลับ (systemd) · startedAt = backend ตัวนี้เริ่มทำงานเมื่อไร */
+  restart: { supported: boolean; pending: boolean; startedAt: string; last: RestartRecord | null };
+  /** หน้าเว็บที่เปิดค้างอยู่ (ช่องสัญญาณสด) */
+  liveClients: number;
+}
+
+export interface RestartRecord {
+  by: string;
+  name: string;
+  reason: string;
+  requestedAt: string;
+  /** null = ไม่รู้ว่ากลับมาเมื่อไร */
+  backAt: string | null;
 }
 
 export type NoticeInput = Pick<SystemNotice, 'message' | 'level' | 'startsAt' | 'endsAt' | 'maintenanceStart' | 'maintenanceEnd'> & { autoMaintenance: boolean };
@@ -39,10 +52,14 @@ export const systemService = {
   status: () => apiGet<SystemStatus>('/system/status', { silent: true }),
   /* ผู้ดูแล */
   admin: () => apiGet<AdminSystem>('/admin/system'),
+  /** ตรวจเบื้องหลังระหว่างรอรีสตาร์ท (ไม่บันทึกประวัติทุก 1.5 วินาที) */
+  adminSilent: () => apiGet<AdminSystem>('/admin/system', { silent: true }),
   createNotice: (input: NoticeInput) => apiPost<SystemNotice>('/admin/system/notices', input),
   updateNotice: (id: number, input: NoticeInput) => apiPut<SystemNotice>(`/admin/system/notices/${id}`, input),
   deleteNotice: (id: number) => apiDelete<{ ok: true }>(`/admin/system/notices/${id}`),
   /** until = เวลาปิดโหมดเอง (null = เปิดค้าง) · เปิดอยู่แล้วเรียกซ้ำ = เลื่อนเวลา/แก้ข้อความ */
   setMaintenance: (on: boolean, message: string, until: string | null = null) => apiPut<AdminSystem['maintenance']>('/admin/system/maintenance', { on, message, until }),
   setPageMaintenance: (pages: string[], message: string, until: string | null = null) => apiPut<AdminSystem['pageMaintenance']>('/admin/system/page-maintenance', { pages, message, until }),
+  /** ตอบกลับก่อน แล้ว backend ปิดตัวเองใน 1 วินาที (systemd เปิดใหม่ให้) */
+  restart: (reason: string) => apiPost<{ ok: true; startedAt: string }>('/admin/system/restart', { reason }),
 };

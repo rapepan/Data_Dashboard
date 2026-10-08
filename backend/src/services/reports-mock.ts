@@ -1,5 +1,6 @@
 import { opdTopDiseases } from './top-diseases-mock';
-import { changePct, diffSeries, QUEUE_AVERAGE, QUEUE_STEPS, queueSeries, rangeSum, SERIES } from './real-series';
+import { opdPrescriptions, opdVisits } from './rx-daily';
+import { changePct, QUEUE_AVERAGE, QUEUE_STEPS, queueSeries, rangeSum, SERIES } from './real-series';
 import type { AlertStatus, ErReport, IpdReport, LabelValue, Metric, OpdReport } from '../types/reports.types';
 
 /**
@@ -30,8 +31,10 @@ export function generateOpdReport(start: string, end: string): OpdReport {
   // ~6,300 ครั้ง/เดือน (~3,950 คน), วันทำการ 240-330 ครั้ง/วัน, เสาร์-อาทิตย์ ~65
   // ผู้ป่วยใหม่ (ไม่เคยมาก่อน) ~8% ของครั้ง · นัดมาตามนัด ~36% ของครั้ง · มาตามนัด ~70% ของนัดทั้งหมด
   const scale = daysBetween(start, end) / 30;
-  // ยอดของช่วงวันที่จากยอดรายเดือนจริง (นอกช่วงข้อมูลใช้ค่าเฉลี่ย ~6,300/เดือน)
-  const total = jitter(rangeSum(SERIES.opd, start, end) ?? 6300 * scale, 0.03);
+  // ยอดของช่วงวันที่ = visit จริงรายวัน (rx-daily-data.ts) — ตรงกับตัวหารของ "ใบสั่งยาที่มียา" ในหน้าเดียวกัน
+  // วันที่ไม่มีข้อมูลใช้ค่าเฉลี่ยตามวันในสัปดาห์
+  const visits = opdVisits(start, end);
+  const total = visits.value;
   const newPatients = jitter(rangeSum(SERIES.newPatients, start, end) ?? total * 0.08, 0.03);
 
   // เฉลี่ยต่อวันทำการ รายชั่วโมง (ovst.vsttime 30 วันล่าสุด) — พีค 08:00 และรอบบ่าย 13:00
@@ -77,9 +80,14 @@ export function generateOpdReport(start: string, end: string): OpdReport {
   return {
     start, end,
     kpis: {
-      total: metric(total, changePct(SERIES.opd, start, end)),
+      total: metric(total, visits.change),
       newPatients: metric(newPatients, changePct(SERIES.newPatients, start, end)),
-      oldPatients: metric(total - newPatients, changePct(diffSeries(SERIES.opd, SERIES.newPatients), start, end)),
+      // ผู้ป่วยเก่า = ทั้งหมด − ใหม่ ทั้งช่วงนี้และช่วงก่อน (ทั้งหมดจากยอดรายวันจริง · ใหม่จากยอดรายเดือนจริง)
+      oldPatients: metric(total - newPatients, (() => {
+        const prevNew = rangeSum(SERIES.newPatients, visits.prevRange.start, visits.prevRange.end);
+        const prevOld = prevNew === null ? 0 : visits.previous - prevNew;
+        return prevOld > 0 ? Math.round(((total - newPatients - prevOld) / prevOld) * 100) : undefined;
+      })()),
       avgWait: metric(avgWait, changePct(queueSeries([0, 1, 2, 3, 4]), start, end, 'mean')),
       avgDoctor: metric(avgDoctor, changePct(queueSeries([0, 1, 2]), start, end, 'mean')),
       satisfaction: { value: satisfaction, change: 0.2, changeIsAbsolute: true },
@@ -101,6 +109,7 @@ export function generateOpdReport(start: string, end: string): OpdReport {
       ],
     },
     peakHours,
+    prescriptions: opdPrescriptions(start, end),
     alerts: [
       { issue: 'เวลารอพบแพทย์ + ตรวจรักษา', value: `${waitDoctor} นาที`, target: '≤ 40 นาที', status: statusAgainst(waitDoctor, 40) },
       { issue: 'เวลารอรับยา', value: `${waitDrug} นาที`, target: '≤ 20 นาที', status: statusAgainst(waitDrug, 20) },

@@ -1135,6 +1135,22 @@ button.sidebar-footer.sidebar-login {
 .metric-change.good { color: var(--indigo); }
 .metric-change.bad { color: var(--rose); }
 .metric-change.flat { color: var(--text-soft); }
+/* หน้า OPD: ใบสั่งยาที่มียาต่อวัน — ตัวเลขสรุปเหนือกราฟ */
+.rx-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .6rem; margin-bottom: .9rem; }
+.rx-summary > div { display: flex; flex-direction: column; gap: .15rem; padding: .65rem .8rem; border: 1px solid var(--border); border-radius: 10px; min-width: 0; }
+.rx-summary > div > span { font-size: .78rem; color: var(--text-muted); }
+.rx-summary > div > b { font-size: 1.45rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.rx-summary > div > b small { font-size: .78rem; font-weight: 400; color: var(--text-muted); }
+.rx-summary > div > small { font-size: .74rem; color: var(--text-soft); }
+.rx-summary .rx-main { border-color: color-mix(in srgb, var(--indigo) 35%, white); background: color-mix(in srgb, var(--indigo) 5%, white); }
+.rx-summary .rx-main > b { color: var(--indigo); }
+@media (max-width: 900px) { .rx-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ป้าย % เทียบช่วงก่อน (ChangeBadge) บนการ์ดสรุป */
+.card-change { display: block; margin-top: .15rem; line-height: 1.3; }
+.kpi-card .card-change { margin: -.85rem 0 .75rem; }
+.wait-tile .change-badge { margin-top: .1rem; font-size: .7rem; }
+.change-badge[data-tip] { cursor: help; }
 
 .occupancy-tile { align-items: center; }
 .ring {
@@ -2111,6 +2127,22 @@ button.presence-card:hover { border-color: #c7c4f5; }
 .maintenance-box.is-on .system-card-icon { background: #fff1f2; color: var(--rose); }
 .maintenance-pill { font-size: .74rem; font-weight: 600; padding: .2rem .6rem; border-radius: 99px; background: #eef2ff; color: #4338ca; white-space: nowrap; }
 .maintenance-pill.on { background: #fff1f2; color: var(--rose); }
+.maintenance-pill.off { background: var(--slate-bg); color: var(--text-muted); }
+/* รีสตาร์ทระบบ */
+.restart-box { margin-bottom: 1rem; }
+.restart-box.is-on { border-color: #fde68a; background: #fffdf5; }
+.restart-box.is-on .system-card-icon { background: #fffbeb; color: #d97706; }
+.restart-steps { list-style: none; margin: 0; padding: .7rem .9rem; display: flex; flex-direction: column; gap: .45rem; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
+.restart-steps li { display: flex; align-items: flex-start; gap: .55rem; font-size: .84rem; }
+.restart-steps li > i { width: 1rem; text-align: center; margin-top: .2rem; }
+.restart-steps li > span { display: flex; flex-direction: column; gap: .15rem; }
+.restart-steps li small { font-size: .76rem; color: #b45309; }
+.restart-steps li.is-todo { color: var(--text-soft); }
+.restart-steps li.is-todo > i { font-size: .45rem; margin-top: .45rem; }
+.restart-steps li.is-active { color: var(--indigo); font-weight: 600; }
+.restart-steps li.is-done > i { color: var(--indigo); }
+.restart-steps li.is-slow { color: #b45309; font-weight: 600; }
+.restart-notice i.fa-spin { animation-duration: 1.4s; }
 .maintenance-current { margin: 0; font-size: .86rem; color: var(--text); background: var(--bg); border-radius: 8px; padding: .55rem .75rem; }
 .maintenance-current i { color: var(--text-soft); margin-right: .3rem; }
 

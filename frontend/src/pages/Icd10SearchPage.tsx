@@ -8,6 +8,7 @@ import Icd10BarChart, { type BarMode } from '../charts/Icd10BarChart';
 import Icd10DonutChart from '../charts/Icd10DonutChart';
 import { useIcd10Data } from '../hooks/useIcd10Data';
 import { formatDmy, formatNumber } from '../utils/format';
+import ExportPair from '../components/report/ExportPair';
 
 const BAR_MODES: { key: BarMode; label: string }[] = [
   { key: 'both', label: 'แสดงคู่' },
@@ -66,6 +67,7 @@ export default function Icd10SearchPage() {
                   <strong><i className="fa-solid fa-chart-column" /> กราฟ 20 อันดับรหัสโรค (Top 20 ICD-10)</strong>
                   <small className="chart-sub">แสดงรหัสโรค (pdx) บนแกนกราฟ — นำเมาส์ชี้เพื่อดูชื่อโรคฉบับเต็ม</small>
                 </div>
+                <ExportPair title="กราฟ 20 อันดับรหัสโรค (Top 20 ICD-10)" />
                 <div className="segmented">
                   {BAR_MODES.map(m => (
                     <button key={m.key} className={barMode === m.key ? 'active' : ''} onClick={() => setBarMode(m.key)}>{m.label}</button>
@@ -79,6 +81,7 @@ export default function Icd10SearchPage() {
               <div className="chart-card-head">
                 <strong><i className="fa-solid fa-chart-pie" /> สัดส่วน Top 5 โรคหลัก</strong>
                 <small className="chart-sub">ตามจำนวนครั้ง เทียบกับโรคอื่นทั้งหมด</small>
+                <ExportPair title="สัดส่วน Top 5 โรคหลัก" />
               </div>
               <Icd10DonutChart items={data.items} totalVisits={data.totals.visits} totalCodes={data.totals.codes} />
             </article>

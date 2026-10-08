@@ -18,11 +18,13 @@ interface StatCardProps {
   tooltip: string;
   value: ReactNode;
   changePct?: number;
+  /** ป้าย % เทียบช่วงก่อน (ChangeBadge) — ใช้แทน changePct */
+  change?: ReactNode;
   parts: StatPart[];
   foot: ReactNode;
 }
 
-export default function StatCard({ accent, icon, title, tooltip, value, changePct, parts, foot }: StatCardProps) {
+export default function StatCard({ accent, icon, title, tooltip, value, changePct, change: changeBadge, parts, foot }: StatCardProps) {
   const change = changePct ?? 0;
   const direction = change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
   const arrow = change > 0 ? 'fa-arrow-up' : change < 0 ? 'fa-arrow-down' : 'fa-minus';
@@ -38,6 +40,7 @@ export default function StatCard({ accent, icon, title, tooltip, value, changePc
       <div className="stat-value-row">
         <span className="stat-value">{value}</span>
         {changePct !== undefined && <span className={`stat-delta ${direction}`}><i className={`fa-solid ${arrow}`} />{Math.abs(change)}%</span>}
+        {changeBadge}
       </div>
 
       <div className="stat-breakdown">

@@ -20,6 +20,7 @@ import { appVersion } from './system/version';
 import { systemScheduler } from './system/scheduler';
 import { systemEvents } from './system/events';
 import { watchdog } from './system/watchdog';
+import { systemRestart } from './system/restart';
 
 const REPORT_DATA_SOURCE: 'mock' | 'hosxp' = 'mock';
 
@@ -133,6 +134,9 @@ async function bootstrap() {
   });
   monitor.start();
   watchdog.start(); // ฐานข้อมูลล่มนาน / backend ดับไม่ปกติ → แจ้งผู้ดูแลทาง Telegram
+  // ปุ่มรีสตาร์ท (หน้าผู้ดูแล): ปิดด้วยขั้นตอนเดียวกับ SIGTERM แล้ว systemd เปิดใหม่ · รอบนี้เปิดหลังกดรีสตาร์ท → แจ้งว่ากลับมาแล้ว
+  systemRestart.onShutdown(reason => { void shutdown(reason); });
+  systemRestart.loadOnStartup();
   logger.startSummaries();
 }
 

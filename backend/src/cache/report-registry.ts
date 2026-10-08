@@ -56,7 +56,7 @@ export const REPORTS: ReportDef[] = [
     version: 14, load: mock(p => generateDashboardSnapshot('today', p.start, p.end)),
     prewarm: () => defaultRanges().map((p, i) => ({ ...p, mode: i === 0 ? 'range' : 'fiscal' })),
   },
-  { name: 'opd', label: 'ผู้ป่วยนอก (OPD)', source: 'mock', version: 15, load: byRange(generateOpdReport), prewarm: () => defaultRanges() },
+  { name: 'opd', label: 'ผู้ป่วยนอก (OPD)', source: 'mock', version: 18, load: byRange(generateOpdReport), prewarm: () => defaultRanges() },
   // วันที่อยู่ใน key → ข้ามวันแล้วได้ชุดใหม่เอง, ไม่มี end → อายุแบบ "วันนี้" (30 นาที)
   { name: 'opd-appointments', label: 'ผู้ป่วยนอก · นัดหมายรายคลินิก (วันนี้/พรุ่งนี้/ย้อนหลัง)', source: 'mock', version: 10, load: mock(p => generateOpdAppointments(p.date)), prewarm: () => [{ date: todayIso() }] },
   { name: 'ipd', label: 'ผู้ป่วยใน (IPD)', source: 'mock', version: 9, load: byRange(generateIpdReport), prewarm: () => defaultRanges() },

@@ -14,6 +14,9 @@ const RETRY_MS = 10_000;
 const ALIVE_MS = 30_000;
 const EVENTS_URL = '/api/system/events';
 const LOCK_NAME = 'bsth-system-live';
+/** ผู้ดูแลสั่งรีสตาร์ท: ระหว่างนี้ตรวจถี่ และแสดงแถบ "กำลังเริ่มใหม่" แทนหน้าเชื่อมต่อไม่ได้ · เกินเวลานี้ยังไม่กลับ = ถือว่าล่ม */
+const RESTART_GRACE_MS = 90_000;
+const RESTART_POLL_MS = 2_000;
 const CHANNEL_NAME = 'bsth-system';
 
 interface State {
@@ -21,11 +24,13 @@ interface State {
   unreachable: boolean;
   /** ตรวจครั้งถัดไปเมื่อไร */
   nextCheckAt: number;
+  /** ผู้ดูแลสั่งรีสตาร์ทเมื่อไร (ยังไม่กลับมา) — null = ไม่ได้รีสตาร์ท */
+  restartingSince: number | null;
 }
 
-type LiveMessage = { type: 'status'; status: SystemStatus } | { type: 'alive' } | { type: 'down' };
+type LiveMessage = { type: 'status'; status: SystemStatus } | { type: 'alive' } | { type: 'down' } | { type: 'restarting' };
 
-let state: State = { status: null, unreachable: false, nextCheckAt: 0 };
+let state: State = { status: null, unreachable: false, nextCheckAt: 0, restartingSince: null };
 let failures = 0;
 let timer: number | undefined;
 let users = 0;
@@ -44,14 +49,25 @@ function schedule(ms: number) {
   set({ nextCheckAt: Date.now() + ms });
 }
 
+const restarting = () => state.restartingSince !== null && Date.now() - state.restartingSince < RESTART_GRACE_MS;
+
 function nextPoll() {
+  if (restarting()) return RESTART_POLL_MS;
   return state.unreachable || failures > 0 ? RETRY_MS : liveHealthy() ? LIVE_POLL_MS : POLL_MS;
+}
+
+/** ผู้ดูแลสั่งรีสตาร์ท (ได้ข่าวจากช่องสัญญาณสด หรือหน้าผู้ดูแลกดเอง) */
+export function markRestarting() {
+  if (restarting()) return;
+  failures = 0;
+  set({ restartingSince: Date.now(), unreachable: false });
+  schedule(RESTART_POLL_MS);
 }
 
 function applyLive(status: SystemStatus) {
   liveAt = Date.now();
   failures = 0;
-  set({ status, unreachable: false });
+  set({ status, unreachable: false, restartingSince: null });
   schedule(nextPoll());
 }
 
@@ -62,12 +78,15 @@ export async function check() {
   try {
     const status = await systemService.status();
     failures = 0;
-    set({ status, unreachable: false });
+    // ยังอยู่ช่วงปิดตัว (ตอบได้ก่อนปิดจริง 1 วินาที) — ไม่นับว่ากลับมาแล้ว ถ้าเพิ่งสั่งไม่ถึง 3 วินาที
+    const stillClosing = state.restartingSince !== null && Date.now() - state.restartingSince < 3_000;
+    set({ status, unreachable: false, ...(stillClosing ? {} : { restartingSince: null }) });
   } catch (error) {
     // backend ตอบกลับมาเป็น error ธรรมดา (เช่น 500) ไม่นับว่าล่ม · เรียกไม่ได้เลย/502–504 = ล่มหรือกำลังอัปเดต
     const down = !(error instanceof ApiError) || (error.status >= 502 && error.status <= 504);
     if (down) failures++;
-    if (failures >= 2) set({ unreachable: true });
+    // ระหว่างรีสตาร์ทไม่ขึ้นหน้าเชื่อมต่อไม่ได้ (แสดงแถบ "กำลังเริ่มใหม่" แทน) · เกินเวลาแล้วยังไม่กลับ = ล่ม
+    if (failures >= 2 && !restarting()) set({ unreachable: true, restartingSince: null });
   } finally {
     checking = false;
     schedule(nextPoll());
@@ -125,6 +144,11 @@ function openEventSource() {
       } catch { /* ข้อมูลเสีย — รอรอบถัดไป */ }
     });
     source.addEventListener('ping', markData);
+    source.addEventListener('restarting', () => {
+      markData();
+      markRestarting();
+      channel?.postMessage({ type: 'restarting' } satisfies LiveMessage);
+    });
     // หลุด (server รีสตาร์ท/ล่ม) — EventSource ต่อใหม่เองทุก 3 วินาที · ระหว่างนั้นตรวจทันทีเพื่อรู้ให้เร็วว่าล่มหรือไม่
     // server ตอบไม่ใช่ 200 (เช่น 429 เต็ม) — EventSource เลิกต่อเอง (CLOSED) → ลองใหม่ภายหลัง
     source.onerror = () => {
@@ -155,6 +179,7 @@ function onChannel(event: MessageEvent<LiveMessage>) {
   const msg = event.data;
   if (msg.type === 'status') applyLive(msg.status);
   else if (msg.type === 'alive') liveAt = Date.now();
+  else if (msg.type === 'restarting') markRestarting();
   else if (msg.type === 'down') { liveAt = 0; void check(); }
 }
 

@@ -90,6 +90,11 @@ export const systemEvents = {
     }
   },
 
+  /** ผู้ดูแลสั่งรีสตาร์ท — บอกทุกหน้าเว็บก่อนปิด (หน้าเว็บแสดง "กำลังเริ่มใหม่" แทนหน้าเชื่อมต่อไม่ได้) */
+  restarting() {
+    for (const res of clients) send(res, 'event: restarting\ndata: 1\n\n');
+  },
+
   /** ปิดทุกเส้นตอนปิดเซิร์ฟเวอร์ (ไม่งั้นปิดเซิร์ฟเวอร์ค้างรอ) */
   closeAll() {
     for (const res of clients) { try { res.end(); } catch { /* ปิดไปแล้ว */ } }

@@ -11,6 +11,8 @@ export interface ApiOptions {
   silent?: boolean;
   /** จำผลไว้กี่ ms (เฉพาะ GET) — เปิดหน้าเดิมซ้ำในช่วงนี้ได้ผลทันที ไม่ยิง backend */
   memoMs?: number;
+  /** บอก backend ว่าคำขอเบื้องหลังนี้ไว้ทำอะไร (แสดงในเทอร์มินัล เช่น compare = ข้อมูลเทียบช่วงก่อน) */
+  purpose?: string;
 }
 
 /** backend ตอบกลับเป็น error (มี status) — ต่างจากเรียก backend ไม่ได้เลย (network error) */
@@ -50,7 +52,7 @@ function request<T>(method: string, path: string, body: unknown, options: ApiOpt
   return task;
 }
 
-async function send<T>(method: string, path: string, body: unknown, { params, silent = false, memoMs = 0 }: ApiOptions): Promise<T> {
+async function send<T>(method: string, path: string, body: unknown, { params, silent = false, memoMs = 0, purpose }: ApiOptions): Promise<T> {
   const query = params ? `?${new URLSearchParams(params)}` : '';
   const memoKey = method === 'GET' && memoMs > 0 ? `${path}${query}` : null;
   if (memoKey) {
@@ -60,6 +62,7 @@ async function send<T>(method: string, path: string, body: unknown, { params, si
   const headers: Record<string, string> = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (silent) headers['X-Background'] = '1';
+  if (purpose) headers['X-Purpose'] = purpose;
 
   const task = fetch(`${API_BASE}${path}${query}`, {
     method,

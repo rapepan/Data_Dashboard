@@ -3,6 +3,8 @@
  * ห้ามพิมพ์รหัสผ่าน / token / ข้อมูลเชื่อมต่อฐานข้อมูล / ค่าค้นหาใน query string (อาจมี HN หรือชื่อผู้ป่วย)
  */
 
+import type { RequestKind } from './request-labels';
+
 // ใส่สีเมื่อแสดงบนเทอร์มินัลจริง หรือรันผ่าน concurrently (ส่ง FORCE_COLOR มาให้) — ปิดได้ด้วย NO_COLOR
 const useColor = !process.env.NO_COLOR && (Boolean(process.stdout.isTTY) || (Boolean(process.env.FORCE_COLOR) && process.env.FORCE_COLOR !== '0'));
 const paint = (code: number) => (text: string | number) => (useColor ? `\x1b[${code}m${text}\x1b[0m` : String(text));
@@ -18,6 +20,13 @@ export const color = {
 
 /** request / query ที่ใช้เวลาเกินนี้ถือว่าช้า (ms) */
 export const SLOW_REQUEST_MS = 1000;
+/** แสดง request เบื้องหลังทีละบรรทัดด้วย (ค่าเริ่มต้นซ่อน — นับรวมในสรุปรายชั่วโมงแทน) */
+const SHOW_BACKGROUND = process.env.LOG_BACKGROUND === '1';
+const KIND_TEXT: Record<RequestKind, string> = {
+  page: '📄 เปิดหน้า  ',
+  action: '✏️  ทำรายการ',
+  background: color.gray('🔄 เบื้องหลัง'),
+};
 export const SLOW_QUERY_MS = 1000;
 
 /** IP เดียวส่ง request เกินนี้ภายใน 1 นาที = ถี่ผิดปกติ (สคริปต์/บอท) — ปรับได้ด้วย LOG_IP_RATE_PER_MIN */
@@ -83,6 +92,8 @@ function dayHeader() {
 /* ---------- สถิติ — เก็บ 2 ชุด: รายชั่วโมง และรายวัน ---------- */
 interface PeriodStats {
   requests: number;
+  /** แยกตามประเภท — เปิดหน้า / ทำรายการ / เบื้องหลัง */
+  kinds: Record<RequestKind, number>;
   errors: number;
   denied: number;
   totalMs: number;
@@ -97,7 +108,7 @@ interface PeriodStats {
 }
 
 const newPeriod = (): PeriodStats => ({
-  requests: 0, errors: 0, denied: 0, totalMs: 0, users: new Set(), ips: new Set(), pages: new Map(),
+  requests: 0, kinds: { page: 0, action: 0, background: 0 }, errors: 0, denied: 0, totalMs: 0, users: new Set(), ips: new Set(), pages: new Map(),
   exports: 0, logins: 0, loginFailed: 0, feedback: 0, slowest: null,
 });
 
@@ -109,6 +120,12 @@ const bothPeriods = (update: (stats: PeriodStats) => void) => { update(hourStats
 function topPages(pages: Map<string, number>, limit: number) {
   if (pages.size === 0) return null;
   return [...pages].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([page, n]) => `${page} ${n.toLocaleString()}`).join(` ${dot()} `);
+}
+
+/** "เปิดหน้า 120 · ทำรายการ 8 · เช็คเบื้องหลัง 640 (ไม่แสดงในเทอร์มินัล)" */
+function kindsText(stats: PeriodStats) {
+  const bg = `เช็คเบื้องหลัง ${stats.kinds.background.toLocaleString()}${SHOW_BACKGROUND ? '' : color.gray(' (ไม่แสดงทีละบรรทัด)')}`;
+  return `เปิดหน้า ${stats.kinds.page.toLocaleString()} ${dot()} ทำรายการ ${stats.kinds.action.toLocaleString()} ${dot()} ${bg}`;
 }
 
 function problemsText(stats: PeriodStats) {
@@ -129,6 +146,7 @@ function printDailySummary(label: string) {
     ['ผู้ใช้', `login ${s.users.size} คน ${dot()} ${s.ips.size} เครื่อง (IP)`],
     ['เข้าสู่ระบบ', `สำเร็จ ${s.logins} ครั้ง${s.loginFailed ? ` ${dot()} ${color.yellow(`ไม่สำเร็จ ${s.loginFailed} ครั้ง`)}` : ''}`],
     ['การใช้งาน', `${s.requests.toLocaleString()} request ${dot()} เฉลี่ย ${avg}ms ${dot()} ${problemsText(s)}`],
+    ['แยกประเภท', kindsText(s)],
     ['หน้าที่เปิดมากสุด', topPages(s.pages, 5)],
     ['ส่งออกไฟล์', `${s.exports} ครั้ง`],
     ['แจ้งปัญหาใหม่', s.feedback ? color.yellow(`${s.feedback} เรื่อง`) : '0 เรื่อง'],
@@ -154,16 +172,26 @@ function watchIpRate(ip: string, who: string) {
 }
 
 export const logger = {
-  /** 1 บรรทัดต่อ request: method สถานะ path ผู้เรียก IP เวลา — ตัด query string ออก (อาจมีคำค้น/ข้อมูลอ่อนไหว) */
-  request(method: string, status: number, url: string, who: string, ip: string, ms: number) {
-    dayHeader();
-    const path = url.split('?')[0];
-    const time = ms >= SLOW_REQUEST_MS ? color.yellow(`${ms}ms ⚠ ช้า`) : color.gray(`${ms}ms`);
-    const user = who === 'guest' ? color.gray(who) : color.cyan(who);
-    console.log(`${method.padEnd(6)} ${statusColor(status)(status)} ${path} ${dot()} ${user} ${dot()} ${color.gray(ip)} ${dot()} ${time}`);
+  /**
+   * 1 บรรทัดต่อ request แยกประเภทให้อ่านง่าย (ชื่อภาษาไทยจาก utils/request-labels.ts — ไม่แสดง query string เพราะอาจมีคำค้น/ข้อมูลอ่อนไหว)
+   *   📄 เปิดหน้า · ✏️ ทำรายการ · 🔄 เบื้องหลัง (ซ่อนไว้ ยกเว้นผิดพลาด/ช้า หรือตั้ง LOG_BACKGROUND=1 — นับรวมในสรุปรายชั่วโมง)
+   */
+  request(method: string, status: number, url: string, who: string, ip: string, ms: number, info: { kind: RequestKind; label: string }) {
+    const problem = status >= 400 || ms >= SLOW_REQUEST_MS;
+    if (info.kind !== 'background' || problem || SHOW_BACKGROUND) {
+      dayHeader();
+      const time = ms >= SLOW_REQUEST_MS ? color.yellow(`${ms}ms ⚠ ช้า`) : color.gray(`${ms}ms`);
+      const user = who === 'guest' ? color.gray(who) : color.cyan(who);
+      // สถานะปกติ (2xx / 304) ไม่ต้องแสดงเลข — แสดงเฉพาะที่ผิดปกติ
+      const code = status >= 300 && status !== 304 ? ` ${statusColor(status)(status)}` : '';
+      const kind = KIND_TEXT[info.kind];
+      const label = info.kind === 'background' ? color.gray(info.label) : info.kind === 'action' ? color.bold(info.label) : info.label;
+      console.log(`${kind} ${label}${code} ${dot()} ${user} ${dot()} ${color.gray(ip)} ${dot()} ${time}`);
+    }
 
     bothPeriods(s => {
       s.requests++;
+      s.kinds[info.kind]++;
       s.totalMs += ms;
       if (status >= 500) s.errors++;
       if (status === 401 || status === 403) s.denied++;
@@ -304,6 +332,7 @@ export const logger = {
       const until = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: TZ });
       printBlock(`สรุป 1 ชั่วโมง · ถึง ${until} น.`, [
         ['การใช้งาน', `${s.requests.toLocaleString()} request ${dot()} ผู้ใช้ login ${s.users.size} คน ${dot()} ${s.ips.size} เครื่อง (IP)`],
+        ['แยกประเภท', kindsText(s)],
         ['ความเร็ว', `เฉลี่ย ${avg}ms${s.slowest ? ` ${dot()} query ช้าสุด ${formatMs(s.slowest.ms)} (${s.slowest.label})` : ''}`],
         ['ปัญหา', problemsText(s)],
         ['หน้าที่เปิดมากสุด', topPages(s.pages, 3)],

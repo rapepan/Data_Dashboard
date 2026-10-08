@@ -5,7 +5,8 @@ import PageSkeleton from '../components/PageSkeleton';
 import IcdTopSection from '../components/report/IcdTopSection';
 import Select from '../components/ui/Select';
 import { useReport } from '../hooks/useReport';
-import { fetchReferralReport } from '../services/reportService';
+import { fetchReferralReport, type FetchOptions } from '../services/reportService';
+import type { ReactNode } from 'react';
 import type { Accent } from '../components/StatCard';
 import { formatDmy, formatNumber } from '../utils/format';
 
@@ -18,15 +19,17 @@ interface ReferCardProps {
   value: string;
   unit: string;
   lines: { icon: string; label: string; value: string }[];
+  change?: ReactNode;
 }
 
-function ReferCard({ accent, icon, title, value, unit, lines }: ReferCardProps) {
+function ReferCard({ accent, icon, title, value, unit, lines, change }: ReferCardProps) {
   return (
     <article className="card-box dental-card readmit-card" data-accent={accent}>
       <div className="dental-card-head">
         <div>
           <span className="dental-card-title">{title}</span>
           <span className="dental-card-value">{value} <small>{unit}</small></span>
+          {change && <span className="card-change">{change}</span>}
         </div>
         <span className="card-icon lg"><i className={`fa-solid ${icon}`} /></span>
       </div>
@@ -40,8 +43,8 @@ function ReferCard({ accent, icon, title, value, unit, lines }: ReferCardProps) 
 export default function ReferralPage() {
   const [point, setPoint] = useState('all');
   // เปลี่ยนจุดส่งต่อ → fetcher เปลี่ยน → useReport โหลดใหม่
-  const fetcher = useCallback((start: string, end: string) => fetchReferralReport(start, end, point), [point]);
-  const { filter, applyFilter, data, lastData, error, refresh } = useReport(fetcher);
+  const fetcher = useCallback((start: string, end: string, opts?: FetchOptions) => fetchReferralReport(start, end, point, opts), [point]);
+  const { filter, applyFilter, data, lastData, error, refresh, compare } = useReport(fetcher, { compare: true });
 
   return (
     <>
@@ -73,7 +76,7 @@ export default function ReferralPage() {
           <>
             <section className="report-row cols-3">
               <ReferCard
-                accent="indigo" icon="fa-square-arrow-up-right" title="จำนวน REFER ทั้งหมด" value={formatNumber(data.total)} unit="คน"
+                accent="indigo" icon="fa-square-arrow-up-right" title="จำนวน REFER ทั้งหมด" value={formatNumber(data.total)} unit="คน" change={compare(r => r.total, 'down')}
                 lines={[{ icon: 'fa-signs-post', label: 'จุดส่งต่อ', value: pointLabel }, { icon: 'fa-calendar-days', label: 'ช่วงวันที่', value: range }]}
               />
               <ReferCard
@@ -81,7 +84,7 @@ export default function ReferralPage() {
                 lines={[{ icon: 'fa-tower-broadcast', label: 'ข้อมูล', value: 'ณ วันสิ้นสุดที่เลือก' }, { icon: 'fa-calendar-day', label: 'วันที่', value: formatDmy(data.day.date) }]}
               />
               <ReferCard
-                accent="plum" icon="fa-calculator" title="ค่าเฉลี่ยส่งต่อต่อวัน" value={data.avgPerDay.toFixed(1)} unit="คน/วัน"
+                accent="plum" icon="fa-calculator" title="ค่าเฉลี่ยส่งต่อต่อวัน" value={data.avgPerDay.toFixed(1)} unit="คน/วัน" change={compare(r => r.avgPerDay, 'down')}
                 lines={[{ icon: 'fa-hourglass-half', label: 'ระยะเวลารวม', value: `${data.days} วัน` }, { icon: 'fa-calendar-days', label: 'ช่วงวันที่', value: range }]}
               />
             </section>

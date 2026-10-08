@@ -81,7 +81,9 @@ export default function AppRoutes() {
         <Route path="/dental" element={guard('dental', <DentalPage />)} />
         <Route path="/physio" element={guard('physio', <PhysioPage />)} />
         <Route path="/telemedicine" element={guard('tele', <TelemedicinePage />)} />
-        <Route path="/teleframe" element={guard('tele', <PlaceholderPage title="Teleframe" icon="fa-display" description="หน้านี้กำลังพัฒนา — จะแสดงสถิติบริการ Teleframe เมื่อพร้อม" />)} />
+        <Route path="/telepharmacy" element={guard('tele', <PlaceholderPage title="Telepharmacy (เภสัชกรรมทางไกล)" icon="fa-display" description="หน้านี้กำลังพัฒนา — จะแสดงสถิติบริการเภสัชกรรมทางไกลเมื่อพร้อม" />)} />
+        {/* ชื่อเดิม — ลิงก์ที่บันทึกไว้ยังใช้ได้ */}
+        <Route path="/teleframe" element={<Navigate to="/telepharmacy" replace />} />
         <Route path="/postal-drug" element={guard('postal', <PostalDrugPage />)} />
         <Route path="/thai-medicine" element={guard('thaimed', <ThaiMedicinePage />)} />
         <Route path="/readmit" element={guard('readmit', <ReadmitPage />)} />

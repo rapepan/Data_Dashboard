@@ -56,6 +56,18 @@ export interface OpdReport {
   satisfaction: { score: number; change: number; topics: LabelValue[] };
   peakHours: LabelValue[];
   alerts: { issue: string; value: string; target: string; status: AlertStatus }[];
+  /** ใบสั่งยาที่มียา (visit ผู้ป่วยนอกที่มีรายการยา) — เฉลี่ยต่อวันทำการ (จ.–ศ.) / เสาร์–อาทิตย์ · รายวันในช่วงที่เลือก */
+  prescriptions: {
+    perWorkday: Metric;
+    perWeekend: number | null;
+    total: number;
+    /** visit ผู้ป่วยนอกทั้งหมดในช่วงเดียวกัน (ตัวหารของ pct) */
+    visits: number;
+    pct: number;
+    workdays: number;
+    weekendDays: number;
+    daily: { dates: string[]; withDrug: number[]; noDrug: number[] };
+  };
 }
 
 /* ------------------------------- IPD ------------------------------- */

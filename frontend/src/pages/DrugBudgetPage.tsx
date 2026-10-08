@@ -11,7 +11,7 @@ import { useReport } from '../hooks/useReport';
 import { SKELETON_MIN_MS } from '../hooks/useMinDelay';
 import { fetchDrugBudgetReport, fetchDrugCompare } from '../services/reportService';
 import { ApiError } from '../services/apiClient';
-import type { DrugCatalogItem, DrugCompare } from '../types/reports';
+import type { DrugCatalogItem, DrugCompare, DrugBudgetReport } from '../types/reports';
 import { formatDmy, formatNumber } from '../utils/format';
 
 const MODERN_COLOR = '#0ea5e9';
@@ -70,7 +70,7 @@ function DrugCompareView({ compare, showMoney }: { compare: DrugCompare; showMon
 }
 
 export default function DrugBudgetPage() {
-  const { filter, applyFilter, data, error, refresh } = useReport(fetchDrugBudgetReport);
+  const { filter, applyFilter, data, error, refresh, compare: vsPrev } = useReport(fetchDrugBudgetReport, { compare: true });
   const [drug, setDrug] = useState<DrugCatalogItem | null>(null);
   const [edFilter, setEdFilter] = useState<EdFilter>('all');
   const [compare, setCompare] = useState<DrugCompare | null>(null);
@@ -116,18 +116,18 @@ export default function DrugBudgetPage() {
         const years = compare?.years.map(y => y.fiscalYear).reverse().join(', ');
         // ตัวกรองบัญชียาหลัก — กรองตาราง และคิดยอดในการ์ดใหม่จากรายการที่เหลือ
         const pass = (item: { ed: boolean }) => edFilter === 'all' || item.ed === (edFilter === 'ed');
-        const lists = {
-          modern: data.topDrugs.modern.filter(pass),
-          thai: data.topDrugs.thai.filter(pass),
-          inhouse: data.topDrugs.inhouse.filter(pass),
-        };
         const total = (items: { qty: number; value: number; cost?: number }[]) => ({
           qty: items.reduce((s, i) => s + i.qty, 0),
           value: items.reduce((s, i) => s + i.value, 0),
           cost: items.reduce((s, i) => s + (i.cost ?? 0), 0),
         });
-        const byType = { modern: total(lists.modern), thai: total(lists.thai), inhouse: total(lists.inhouse) };
-        const all = total([...lists.modern, ...lists.thai, ...lists.inhouse]);
+        const sums = (r: DrugBudgetReport) => {
+          const l = { modern: r.topDrugs.modern.filter(pass), thai: r.topDrugs.thai.filter(pass), inhouse: r.topDrugs.inhouse.filter(pass) };
+          return { lists: l, byType: { modern: total(l.modern), thai: total(l.thai), inhouse: total(l.inhouse) }, all: total([...l.modern, ...l.thai, ...l.inhouse]) };
+        };
+        const { lists, byType, all } = sums(data);
+        // ป้ายเทียบช่วงก่อน — ปริมาณยา / เงิน ไม่บอกว่าดีหรือแย่ (สีกลาง)
+        const vs = (pick: (t: ReturnType<typeof sums>) => number) => vsPrev(r => pick(sums(r)), 'none');
         const edLabel = edFilter === 'all' ? '' : edFilter === 'ed' ? ' · ในบัญชียาหลัก' : ' · นอกบัญชียาหลัก';
         // สัดส่วนในบัญชี: login = ตามมูลค่า · ผู้เยี่ยมชม = ตามจำนวนชิ้น
         const edShare = data.showMoney
@@ -157,11 +157,11 @@ export default function DrugBudgetPage() {
             {p && <>
             <section className="grid-3">
               <KpiCard accent="indigo" icon="fa-prescription-bottle-medical" title="ผู้ป่วยนอกที่รับยา" value={formatNumber(p.opd.withDrug)} unit="ครั้ง"
-                badgeIcon="fa-user" badge={`${formatNumber(p.opd.personsWithDrug)} คน`} note={`${pct(p.opd.withDrug, p.opd.visits)} ของผู้ป่วยนอก ${formatNumber(p.opd.visits)} ครั้ง`} />
+                badgeIcon="fa-user" badge={`${formatNumber(p.opd.personsWithDrug)} คน`} note={`${pct(p.opd.withDrug, p.opd.visits)} ของผู้ป่วยนอก ${formatNumber(p.opd.visits)} ครั้ง`} change={vsPrev(r => r.patients?.opd.withDrug, 'none')} />
               <KpiCard accent="slate" icon="fa-ban" title="ผู้ป่วยนอกที่ไม่มียา" value={formatNumber(p.opd.noDrug)} unit="ครั้ง"
-                badgeIcon="fa-user" badge={`${formatNumber(p.opd.personsNoDrug)} คน`} note={`${pct(p.opd.noDrug, p.opd.visits)} — เช่น ทำแผล ตรวจตามนัด ทำหัตถการ`} />
+                badgeIcon="fa-user" badge={`${formatNumber(p.opd.personsNoDrug)} คน`} note={`${pct(p.opd.noDrug, p.opd.visits)} — เช่น ทำแผล ตรวจตามนัด ทำหัตถการ`} change={vsPrev(r => r.patients?.opd.noDrug, 'none')} />
               <KpiCard accent="plum" icon="fa-bed-pulse" title="ผู้ป่วยในที่รับยา" value={formatNumber(p.ipd.withDrug)} unit="ราย"
-                badgeIcon="fa-hospital" badge={`จาก admit ${formatNumber(p.ipd.admits)} ราย`} note={pct(p.ipd.withDrug, p.ipd.admits)} />
+                badgeIcon="fa-hospital" badge={`จาก admit ${formatNumber(p.ipd.admits)} ราย`} note={pct(p.ipd.withDrug, p.ipd.admits)} change={vsPrev(r => r.patients?.ipd.withDrug, 'none')} />
             </section>
             <p className="panel-foot-note drug-patient-note">นับตามครั้งที่มารับบริการ (visit) · ผู้ป่วยคนเดียวที่มาหลายครั้ง อาจมีทั้งครั้งที่รับยาและไม่มียา จึงนับอยู่ทั้งสองกลุ่ม</p>
             </>}
@@ -169,20 +169,20 @@ export default function DrugBudgetPage() {
             {data.showMoney ? (
               <>
                 <section className="grid-4">
-                  <KpiCard accent="indigo" icon="fa-boxes-stacked" title={`ปริมาณการใช้ยารวม${edLabel}`} value={formatNumber(all.qty)} unit="ชิ้น" badgeIcon="fa-calendar-days" badge={period} />
-                  <KpiCard accent="slate" icon="fa-tags" title={`ราคาทุนรวม${edLabel}`} value={money.format(all.cost)} unit="บาท" badgeIcon="fa-calendar-days" badge={period} />
-                  <KpiCard accent="plum" icon="fa-coins" title={`ราคาขายรวม${edLabel}`} value={money.format(all.value)} unit="บาท" badgeIcon="fa-calendar-days" badge={period} />
+                  <KpiCard accent="indigo" icon="fa-boxes-stacked" title={`ปริมาณการใช้ยารวม${edLabel}`} value={formatNumber(all.qty)} unit="ชิ้น" badgeIcon="fa-calendar-days" badge={period} change={vs(t => t.all.qty)} />
+                  <KpiCard accent="slate" icon="fa-tags" title={`ราคาทุนรวม${edLabel}`} value={money.format(all.cost)} unit="บาท" badgeIcon="fa-calendar-days" badge={period} change={vs(t => t.all.cost)} />
+                  <KpiCard accent="plum" icon="fa-coins" title={`ราคาขายรวม${edLabel}`} value={money.format(all.value)} unit="บาท" badgeIcon="fa-calendar-days" badge={period} change={vs(t => t.all.value)} />
                   <KpiCard accent={margin < 0 ? 'rose' : 'amber'} icon="fa-scale-balanced" title="ส่วนต่าง (ขาย − ทุน)" value={money.format(margin)} unit="บาท"
-                    badgeIcon="fa-percent" badge={`${all.value ? ((margin / all.value) * 100).toFixed(1) : '0.0'}% ของราคาขาย`} />
+                    badgeIcon="fa-percent" badge={`${all.value ? ((margin / all.value) * 100).toFixed(1) : '0.0'}% ของราคาขาย`} change={vs(t => t.all.value - t.all.cost)} />
                 </section>
               </>
             ) : (
               <>
                 <section className="grid-4">
-                  <KpiCard accent="indigo" icon="fa-boxes-stacked" title={`ปริมาณการใช้ยารวม${edLabel}`} value={formatNumber(all.qty)} unit="ชิ้น" badgeIcon="fa-calendar-days" badge={period} />
-                  <KpiCard accent="plum" icon="fa-seedling" title="ยาสมุนไพร" value={formatNumber(byType.thai.qty)} unit="ชิ้น" badgeIcon="fa-list" badge={`${lists.thai.length} รายการ`} />
-                  <KpiCard accent="indigo" icon="fa-capsules" title="ยาสามัญ" value={formatNumber(byType.modern.qty)} unit="ชิ้น" badgeIcon="fa-list" badge={`${lists.modern.length} รายการ`} />
-                  <KpiCard accent="amber" icon="fa-flask" title="ยาผลิตใช้เอง" value={formatNumber(byType.inhouse.qty)} unit="ชิ้น" badgeIcon="fa-list" badge={`${lists.inhouse.length} รายการ`} />
+                  <KpiCard accent="indigo" icon="fa-boxes-stacked" title={`ปริมาณการใช้ยารวม${edLabel}`} value={formatNumber(all.qty)} unit="ชิ้น" badgeIcon="fa-calendar-days" badge={period} change={vs(t => t.all.qty)} />
+                  <KpiCard accent="plum" icon="fa-seedling" title="ยาสมุนไพร" value={formatNumber(byType.thai.qty)} unit="ชิ้น" badgeIcon="fa-list" badge={`${lists.thai.length} รายการ`} change={vs(t => t.byType.thai.qty)} />
+                  <KpiCard accent="indigo" icon="fa-capsules" title="ยาสามัญ" value={formatNumber(byType.modern.qty)} unit="ชิ้น" badgeIcon="fa-list" badge={`${lists.modern.length} รายการ`} change={vs(t => t.byType.modern.qty)} />
+                  <KpiCard accent="amber" icon="fa-flask" title="ยาผลิตใช้เอง" value={formatNumber(byType.inhouse.qty)} unit="ชิ้น" badgeIcon="fa-list" badge={`${lists.inhouse.length} รายการ`} change={vs(t => t.byType.inhouse.qty)} />
                 </section>
                 <div className="notice-bar drug-money-note"><i className="fa-solid fa-lock" /><span>ราคาทุน / ราคาขาย แสดงเฉพาะผู้ที่เข้าสู่ระบบ</span></div>
               </>

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { CountBreakdown, PhysioCount } from '../../types/reports';
 import type { Accent } from '../StatCard';
 import { formatNumber } from '../../utils/format';
@@ -12,12 +13,14 @@ interface CountSummaryCardProps {
   colors: string[];
   /** แสดงแถบสัดส่วน IPD : OPD (ต้องมี data.ipd / data.opd) */
   showSplit?: boolean;
+  /** ป้าย % เทียบช่วงก่อน (ChangeBadge) */
+  change?: ReactNode;
 }
 
 const pct = (part: number, total: number) => (total ? (part / total) * 100 : 0);
 
 /** การ์ดสรุป: คน / ครั้ง รวม + แยกกลุ่ม (ใช้ในหน้ากายภาพบำบัด / แพทย์แผนไทย) */
-export default function CountSummaryCard({ accent, icon, title, note, data, categories, colors, showSplit }: CountSummaryCardProps) {
+export default function CountSummaryCard({ accent, icon, title, note, data, categories, colors, showSplit, change }: CountSummaryCardProps) {
   const ipdPct = data.ipd ? pct(data.ipd.visits, data.total.visits) : 0;
 
   return (
@@ -30,6 +33,7 @@ export default function CountSummaryCard({ accent, icon, title, note, data, cate
             <span className="slash">/</span>
             <em>{formatNumber(data.total.visits)}</em> <small>ครั้ง</small>
           </span>
+          {change && <span className="card-change">{change}</span>}
           <span className="dental-card-note">{note}</span>
         </div>
         <span className="card-icon lg"><i className={`fa-solid ${icon}`} /></span>

@@ -16,6 +16,7 @@ const ACTION_LABEL: Record<string, { label: string; tone: string }> = {
   notice_delete: { label: 'ลบประกาศ', tone: 'slate' },
   maintenance_on: { label: 'เปิดโหมดปิดปรับปรุง', tone: 'rose' },
   maintenance_off: { label: 'ปิดโหมดปิดปรับปรุง', tone: 'indigo' },
+  system_restart: { label: 'รีสตาร์ทระบบ', tone: 'rose' },
   logout: { label: 'ออกจากระบบ', tone: 'slate' },
   session_expired: { label: 'หมดเวลาการใช้งาน', tone: 'slate' },
   view: { label: 'เปิดดูข้อมูล', tone: 'sky' },
@@ -24,31 +25,6 @@ const ACTION_LABEL: Record<string, { label: string; tone: string }> = {
   feedback_submit: { label: 'ส่งเรื่องแจ้งปัญหา', tone: 'amber' },
   feedback_status: { label: 'เปลี่ยนสถานะเรื่องแจ้งปัญหา', tone: 'indigo' },
   cache_refresh: { label: 'สั่งดึงข้อมูลใหม่', tone: 'sky' },
-};
-
-const PATH_LABEL: Record<string, string> = {
-  '/api/dashboard/summary': 'หน้าแรก (Dashboard)',
-  '/api/icd10/summary': 'ค้นหาผู้ป่วยตามโรค (ICD-10)',
-  '/api/queue/report': 'ระยะเวลารอคอยคิว',
-  '/api/opd/report': 'ผู้ป่วยนอก (OPD)',
-  '/api/opd/appointments': 'ผู้ป่วยนอก · นัดหมายรายคลินิก',
-  '/api/ipd/report': 'ผู้ป่วยใน (IPD)',
-  '/api/er/report': 'อุบัติเหตุ & ฉุกเฉิน (ER)',
-  '/api/dental/report': 'ทันตกรรม',
-  '/api/physio/report': 'กายภาพบำบัด',
-  '/api/telemedicine/report': 'การแพทย์ทางไกล',
-  '/api/postal-drug/report': 'การส่งยาทางไปรษณีย์',
-  '/api/thai-medicine/report': 'แพทย์แผนไทย',
-  '/api/drug-budget/report': 'ปริมาณการใช้ยา',
-  '/api/drug-budget/compare': 'ปริมาณการใช้ยา · เปรียบเทียบรายการยา',
-  '/api/readmit/report': 'Re-admit (28 วัน)',
-  '/api/referral/report': 'ข้อมูลการส่งต่อ (Refer)',
-  '/api/admin/audit': 'ประวัติการใช้งาน',
-  '/api/admin/feedback': 'แจ้งปัญหา / ข้อเสนอแนะ',
-  '/api/admin/users': 'ผู้ใช้งานระบบ',
-  '/api/admin/system': 'ประกาศ / ปิดปรับปรุง',
-  '/api/feedback/mine': 'เรื่องที่แจ้ง',
-  '/api/admin/cache': 'สถานะข้อมูล',
 };
 
 type Who = 'all' | 'user' | 'guest';
@@ -140,7 +116,7 @@ export default function AuditLogPage() {
                       ? <span className="guest-chip"><i className="fa-solid fa-user-secret" /> ผู้เยี่ยมชม</span>
                       : <code className="icd-code">{entry.loginname}</code>}</td>
                     <td><span className={`action-badge tone-${meta.tone}`}>{meta.label}</span></td>
-                    <td>{(entry.detail && PATH_LABEL[entry.detail]) ?? entry.detail ?? '–'}</td>
+                    <td>{entry.label ?? entry.detail ?? '–'}</td>
                     <td className="muted">{entry.ip}</td>
                   </tr>
                 );

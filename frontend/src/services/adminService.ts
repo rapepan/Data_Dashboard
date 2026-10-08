@@ -6,6 +6,8 @@ export interface AuditEntry {
   action: string;
   detail?: string;
   ip?: string;
+  /** เปิดดู: ชื่อหน้าภาษาไทยของ path ใน detail (backend utils/request-labels.ts) */
+  label?: string;
 }
 
 export interface CacheStatus {

@@ -9,6 +9,7 @@ import { systemEvents } from '../system/events';
 import { buildSystemStatus } from '../system/status';
 import { logger } from '../utils/logger';
 import { userSettings } from '../auth/user-settings';
+import { systemRestart } from '../system/restart';
 
 const badRequest = (reply: FastifyReply, message: string) => reply.status(400).send({ statusCode: 400, error: 'Bad Request', message });
 
@@ -110,7 +111,19 @@ export const systemController = {
       pageMaintenance: systemStore.pageMaintenance(),
       maintainablePages: MAINTAINABLE_PAGES,
       notices: await systemStore.listNotices(),
+      restart: systemRestart.info(),
+      liveClients: systemEvents.count(),
     };
+  },
+
+  /** รีสตาร์ท backend — ตอบกลับก่อน แล้วปิดตัวเองใน 1 วินาที (systemd เปิดใหม่ให้) */
+  async restart(req: FastifyRequest<{ Body: { reason?: string } }>, reply: FastifyReply) {
+    const admin = currentUser(req)!;
+    const reason = String(req.body?.reason ?? '').trim().slice(0, 200);
+    const error = systemRestart.request({ loginname: admin.loginname, name: admin.displayName }, reason);
+    if (error) return reply.status(409).send({ statusCode: 409, error: 'Conflict', message: error });
+    auditLog.write({ loginname: admin.loginname, action: 'system_restart', detail: reason || undefined, ip: req.ip });
+    return { ok: true, startedAt: systemRestart.info().startedAt };
   },
 
   async createNotice(req: FastifyRequest<{ Body: NoticeBody }>, reply: FastifyReply) {

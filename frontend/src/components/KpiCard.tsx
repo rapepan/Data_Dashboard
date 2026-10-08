@@ -11,10 +11,12 @@ interface KpiCardProps {
   badge: ReactNode;
   badgeIcon: string;
   note?: ReactNode;
+  /** ป้าย % เทียบช่วงก่อน (ChangeBadge) */
+  change?: ReactNode;
 }
 
 /** การ์ดตัวเลขสรุปแบบเรียบ (หัวข้อ + ตัวเลขใหญ่ + ป้ายอธิบายที่มาของตัวเลข) */
-export default function KpiCard({ accent, icon, title, value, unit, badge, badgeIcon, note }: KpiCardProps) {
+export default function KpiCard({ accent, icon, title, value, unit, badge, badgeIcon, note, change }: KpiCardProps) {
   return (
     <article className="card-box kpi-card" data-accent={accent}>
       <div className="kpi-head">
@@ -25,6 +27,7 @@ export default function KpiCard({ accent, icon, title, value, unit, badge, badge
         {value}
         {unit && <small>{unit}</small>}
       </div>
+      {change && <div className="card-change">{change}</div>}
       <div className="kpi-foot">
         <span className="kpi-badge"><i className={`fa-solid ${badgeIcon}`} />{badge}</span>
         {note && <span>{note}</span>}

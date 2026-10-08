@@ -24,10 +24,13 @@ const CATEGORY: Record<FeedbackCategory, { icon: string; label: string }> = {
 
 const ids = (value: string | undefined) => (value ?? '').split(',').map(id => id.trim()).filter(Boolean);
 
-function config(kind: 'feedback' | 'alert' = 'feedback') {
+type Kind = 'feedback' | 'alert' | 'test';
+
+/** ปลายทาง: alert → TELEGRAM_ALERT_CHAT_ID · test → TELEGRAM_TEST_CHAT_ID (เช่น แชทส่วนตัว ไม่รบกวนกลุ่ม) · ไม่ได้ตั้ง = TELEGRAM_CHAT_ID */
+function config(kind: Kind = 'feedback') {
   const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
-  const alertIds = ids(process.env.TELEGRAM_ALERT_CHAT_ID);
-  const chatIds = kind === 'alert' && alertIds.length ? alertIds : ids(process.env.TELEGRAM_CHAT_ID);
+  const own = ids(kind === 'alert' ? process.env.TELEGRAM_ALERT_CHAT_ID : kind === 'test' ? process.env.TELEGRAM_TEST_CHAT_ID : '');
+  const chatIds = own.length ? own : ids(process.env.TELEGRAM_CHAT_ID);
   return { token, chatIds };
 }
 
@@ -104,7 +107,7 @@ async function sendPhotosOnce(token: string, chatId: string, photos: { buffer: B
 }
 
 /** ส่งไปทุกปลายทาง — ล้มลองใหม่ 1 ครั้ง (เว้น 2 วินาที) แล้วรายงานในเทอร์มินัล */
-async function sendToAll(text: string, label: string, photos: { buffer: Buffer; mime: string; file: string }[] = [], photoCaption = '', kind: 'feedback' | 'alert' = 'feedback') {
+async function sendToAll(text: string, label: string, photos: { buffer: Buffer; mime: string; file: string }[] = [], photoCaption = '', kind: Kind = 'feedback') {
   const { token, chatIds } = config(kind);
   if (!token || chatIds.length === 0) return;
   await Promise.all(chatIds.map(async chatId => {
@@ -152,8 +155,13 @@ export const notifyService = {
     void sendToAll(html, 'แจ้งเตือนระบบ', [], '', 'alert');
   },
 
-  /** ข้อความทดสอบ (ใช้ตอนตั้งค่า) */
+  /** ข้อความทดสอบ (ใช้ตอนตั้งค่า) — ไป TELEGRAM_TEST_CHAT_ID ถ้าตั้งไว้ */
   test() {
-    return sendToAll('✅ <b>DATA BSTH</b>\nทดสอบการแจ้งเตือน — ตั้งค่า Telegram สำเร็จ', 'ทดสอบ');
+    return sendToAll('✅ <b>DATA BSTH</b>\nทดสอบการแจ้งเตือน — ตั้งค่า Telegram สำเร็จ', 'ทดสอบ', [], '', 'test');
+  },
+
+  /** ปลายทางของข้อความทดสอบ (แสดงให้ผู้รันรู้ว่าส่งไปไหน) */
+  testTargets() {
+    return config('test').chatIds;
   },
 };
