@@ -1,4 +1,4 @@
-import type { OpdAppointments, PostalDrugReport, DentalReport, QueueReport, ReadmitReport, ReferralReport, DrugBudgetReport, DrugCompare, ErReport, IpdReport, OpdReport, PhysioReport, TelemedicineReport, ThaiMedicineReport, WithMeta } from '../types/reports';
+import type { OpdAppointments, PostalDrugReport, DentalReport, QueueReport, ReadmitReport, ReferralReport, DrugBudgetReport, DrugCompare, ErReport, IpdReport, OpdReport, PhysioReport, TelemedicineReport, TelepharmacyReport, ThaiMedicineReport, WithMeta } from '../types/reports';
 import { apiGet } from './apiClient';
 
 export const PAGE_MEMO_MS = 2 * 60_000;
@@ -17,6 +17,7 @@ export const fetchErReport = fetchReport<ErReport>('/er/report');
 export const fetchDentalReport = fetchReport<DentalReport>('/dental/report');
 export const fetchPhysioReport = fetchReport<PhysioReport>('/physio/report');
 export const fetchTelemedicineReport = fetchReport<TelemedicineReport>('/telemedicine/report');
+export const fetchTelepharmacyReport = fetchReport<TelepharmacyReport>('/telepharmacy/report');
 export const fetchPostalDrugReport = fetchReport<PostalDrugReport>('/postal-drug/report');
 export const fetchThaiMedicineReport = fetchReport<ThaiMedicineReport>('/thai-medicine/report');
 export const fetchDrugBudgetReport = fetchReport<DrugBudgetReport>('/drug-budget/report');

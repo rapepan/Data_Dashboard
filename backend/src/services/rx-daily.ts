@@ -1,4 +1,5 @@
 import { RX_DAILY } from './rx-daily-data';
+import { SERIES } from './real-series';
 import type { OpdReport } from '../types/reports.types';
 
 /**
@@ -22,9 +23,20 @@ const DOW_AVG = (() => {
   return sum.map(s => (s.n ? [Math.round(s.visits / s.n), Math.round(s.withDrug / s.n)] : [0, 0]) as [number, number]);
 })();
 
+/** วันก่อนตารางรายวัน: แบ่งยอดจริงรายเดือนของ OPD (real-series.ts) ลงแต่ละวันตามรูปแบบวันในสัปดาห์ · ใบสั่งยาใช้สัดส่วนเดียวกัน */
 function dayValue(iso: string): [visits: number, withDrug: number] {
-  return RX_DAILY[iso] ?? DOW_AVG[weekday(iso)];
+  const real = RX_DAILY[iso];
+  if (real) return real;
+  const base = DOW_AVG[weekday(iso)];
+  const month = iso < FIRST_DAY ? SERIES.opd[iso.slice(0, 7)] : undefined;
+  if (month === undefined || month === null) return base;
+  const y = Number(iso.slice(0, 4));
+  const m = Number(iso.slice(5, 7));
+  const shape = dates(`${iso.slice(0, 8)}01`, isoOf(new Date(Date.UTC(y, m, 0)))).reduce((s, d) => s + DOW_AVG[weekday(d)][0], 0) || 1;
+  const f = month / shape;
+  return [base[0] * f, base[1] * f];
 }
+const FIRST_DAY = Object.keys(RX_DAILY).sort()[0];
 
 function dates(start: string, end: string) {
   const out: string[] = [];
@@ -36,7 +48,8 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
 
 function summarize(start: string, end: string) {
   const days = dates(start, end);
-  const rows = days.map(d => ({ d, v: dayValue(d) }));
+  // ปัดเป็นจำนวนเต็มรายวัน (วันก่อนตารางรายวันเป็นค่าที่แบ่งจากยอดรายเดือน)
+  const rows = days.map(d => ({ d, v: dayValue(d).map(Math.round) as [number, number] }));
   const work = rows.filter(r => !isWeekend(r.d));
   const weekend = rows.filter(r => isWeekend(r.d));
   const total = rows.reduce((s, r) => s + r.v[1], 0);

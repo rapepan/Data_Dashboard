@@ -37,6 +37,7 @@ const Icd10SearchPage = lazyPage(() => import('../pages/Icd10SearchPage'));
 const DentalPage = lazyPage(() => import('../pages/DentalPage'));
 const PhysioPage = lazyPage(() => import('../pages/PhysioPage'));
 const TelemedicinePage = lazyPage(() => import('../pages/TelemedicinePage'));
+const TelepharmacyPage = lazyPage(() => import('../pages/TelepharmacyPage'));
 const ThaiMedicinePage = lazyPage(() => import('../pages/ThaiMedicinePage'));
 const ReadmitPage = lazyPage(() => import('../pages/ReadmitPage'));
 const ReferralPage = lazyPage(() => import('../pages/ReferralPage'));
@@ -49,7 +50,6 @@ const UsersPage = lazyPage(() => import('../pages/admin/UsersPage'), true);
 const SystemPage = lazyPage(() => import('../pages/admin/SystemPage'), true);
 const ContactPage = lazyPage(() => import('../pages/ContactPage'));
 const PostalDrugPage = lazyPage(() => import('../pages/PostalDrugPage'));
-const PlaceholderPage = lazyPage(() => import('../pages/PlaceholderPage'));
 const MyFeedbackPage = lazyPage(() => import('../pages/MyFeedbackPage'));
 
 const guard = (page: string, element: ReactNode) => <PageGuard page={page}>{element}</PageGuard>;
@@ -81,7 +81,7 @@ export default function AppRoutes() {
         <Route path="/dental" element={guard('dental', <DentalPage />)} />
         <Route path="/physio" element={guard('physio', <PhysioPage />)} />
         <Route path="/telemedicine" element={guard('tele', <TelemedicinePage />)} />
-        <Route path="/telepharmacy" element={guard('tele', <PlaceholderPage title="Telepharmacy (เภสัชกรรมทางไกล)" icon="fa-display" description="หน้านี้กำลังพัฒนา — จะแสดงสถิติบริการเภสัชกรรมทางไกลเมื่อพร้อม" />)} />
+        <Route path="/telepharmacy" element={guard('tele', <TelepharmacyPage />)} />
         {/* ชื่อเดิม — ลิงก์ที่บันทึกไว้ยังใช้ได้ */}
         <Route path="/teleframe" element={<Navigate to="/telepharmacy" replace />} />
         <Route path="/postal-drug" element={guard('postal', <PostalDrugPage />)} />

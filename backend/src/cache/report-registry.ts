@@ -5,6 +5,7 @@ import { generateOpdAppointments } from '../services/opd-appointments-mock';
 import { generateDentalReport } from '../services/dental-mock';
 import { generatePhysioReport } from '../services/physio-mock';
 import { generateTelemedicineReport } from '../services/telemedicine-mock';
+import { generateTelepharmacyReport } from '../services/telepharmacy-mock';
 import { generatePostalDrugReport } from '../services/postal-drug-mock';
 import { generateThaiMedicineReport } from '../services/thai-medicine-mock';
 import { generateDrugBudgetReport, generateDrugCompare } from '../services/drug-budget-mock';
@@ -53,25 +54,26 @@ const byRange = (fn: (start: string, end: string) => unknown) => mock(p => fn(p.
 export const REPORTS: ReportDef[] = [
   {
     name: 'dashboard', label: 'หน้าแรก (Dashboard)', source: 'mock',
-    version: 14, load: mock(p => generateDashboardSnapshot('today', p.start, p.end)),
+    version: 15, load: mock(p => generateDashboardSnapshot('today', p.start, p.end)),
     prewarm: () => defaultRanges().map((p, i) => ({ ...p, mode: i === 0 ? 'range' : 'fiscal' })),
   },
-  { name: 'opd', label: 'ผู้ป่วยนอก (OPD)', source: 'mock', version: 18, load: byRange(generateOpdReport), prewarm: () => defaultRanges() },
+  { name: 'opd', label: 'ผู้ป่วยนอก (OPD)', source: 'mock', version: 21, load: byRange(generateOpdReport), prewarm: () => defaultRanges() },
   // วันที่อยู่ใน key → ข้ามวันแล้วได้ชุดใหม่เอง, ไม่มี end → อายุแบบ "วันนี้" (30 นาที)
-  { name: 'opd-appointments', label: 'ผู้ป่วยนอก · นัดหมายรายคลินิก (วันนี้/พรุ่งนี้/ย้อนหลัง)', source: 'mock', version: 10, load: mock(p => generateOpdAppointments(p.date)), prewarm: () => [{ date: todayIso() }] },
-  { name: 'ipd', label: 'ผู้ป่วยใน (IPD)', source: 'mock', version: 9, load: byRange(generateIpdReport), prewarm: () => defaultRanges() },
-  { name: 'er', label: 'อุบัติเหตุ & ฉุกเฉิน (ER)', source: 'mock', version: 9, load: byRange(generateErReport), prewarm: () => defaultRanges() },
-  { name: 'queue', label: 'ระยะเวลารอคอยคิว', source: 'mock', version: 8, load: byRange(generateQueueReport), prewarm: () => defaultRanges() },
-  { name: 'icd10', label: 'ค้นหาผู้ป่วยตามโรค (ICD-10)', source: 'mock', version: 8, load: byRange(generateIcd10Summary), prewarm: () => defaultRanges() },
-  { name: 'dental', label: 'ทันตกรรม', source: 'mock', version: 9, load: byRange(generateDentalReport), prewarm: () => defaultRanges() },
-  { name: 'physio', label: 'กายภาพบำบัด', source: 'mock', version: 11, load: byRange(generatePhysioReport), prewarm: () => defaultRanges() },
-  { name: 'telemedicine', label: 'การแพทย์ทางไกล', source: 'mock', version: 9, load: byRange(generateTelemedicineReport), prewarm: () => defaultRanges() },
-  { name: 'postal-drug', label: 'การส่งยาทางไปรษณีย์', source: 'mock', version: 6, load: byRange(generatePostalDrugReport), prewarm: () => defaultRanges() },
-  { name: 'thai-medicine', label: 'แพทย์แผนไทย / แผนจีน', source: 'mock', version: 11, load: byRange(generateThaiMedicineReport), prewarm: () => defaultRanges() },
-  { name: 'drug-budget', label: 'ปริมาณการใช้ยา', source: 'mock', version: 12, load: byRange(generateDrugBudgetReport), prewarm: () => defaultRanges() },
-  { name: 'drug-compare', label: 'ปริมาณการใช้ยา · เปรียบเทียบรายการยา', source: 'mock', version: 11, load: mock(p => generateDrugCompare(p.code, p.end)) },
-  { name: 'readmit', label: 'Re-admit (28 วัน)', source: 'mock', version: 9, load: mock(p => generateReadmitReport(p.start, p.end, p.ward)), prewarm: () => defaultRanges({ ward: 'all' }) },
-  { name: 'referral', label: 'ข้อมูลการส่งต่อ (Refer)', source: 'mock', version: 9, load: mock(p => generateReferralReport(p.start, p.end, p.point)), prewarm: () => defaultRanges({ point: 'all' }) },
+  { name: 'opd-appointments', label: 'ผู้ป่วยนอก · นัดหมายรายคลินิก (วันนี้/พรุ่งนี้/ย้อนหลัง)', source: 'mock', version: 12, load: mock(p => generateOpdAppointments(p.date)), prewarm: () => [{ date: todayIso() }] },
+  { name: 'ipd', label: 'ผู้ป่วยใน (IPD)', source: 'mock', version: 12, load: byRange(generateIpdReport), prewarm: () => defaultRanges() },
+  { name: 'er', label: 'อุบัติเหตุ & ฉุกเฉิน (ER)', source: 'mock', version: 12, load: byRange(generateErReport), prewarm: () => defaultRanges() },
+  { name: 'queue', label: 'ระยะเวลารอคอยคิว', source: 'mock', version: 10, load: byRange(generateQueueReport), prewarm: () => defaultRanges() },
+  { name: 'icd10', label: 'ค้นหาผู้ป่วยตามโรค (ICD-10)', source: 'mock', version: 11, load: byRange(generateIcd10Summary), prewarm: () => defaultRanges() },
+  { name: 'dental', label: 'ทันตกรรม', source: 'mock', version: 12, load: byRange(generateDentalReport), prewarm: () => defaultRanges() },
+  { name: 'physio', label: 'กายภาพบำบัด', source: 'mock', version: 14, load: byRange(generatePhysioReport), prewarm: () => defaultRanges() },
+  { name: 'telemedicine', label: 'การแพทย์ทางไกล', source: 'mock', version: 12, load: byRange(generateTelemedicineReport), prewarm: () => defaultRanges() },
+  { name: 'telepharmacy', label: 'Telepharmacy (การจ่ายยาผู้ป่วยทางไกล)', source: 'mock', version: 2, load: byRange(generateTelepharmacyReport), prewarm: () => defaultRanges() },
+  { name: 'postal-drug', label: 'การส่งยาทางไปรษณีย์', source: 'mock', version: 8, load: byRange(generatePostalDrugReport), prewarm: () => defaultRanges() },
+  { name: 'thai-medicine', label: 'แพทย์แผนไทย / แผนจีน', source: 'mock', version: 15, load: byRange(generateThaiMedicineReport), prewarm: () => defaultRanges() },
+  { name: 'drug-budget', label: 'ปริมาณการใช้ยา', source: 'mock', version: 15, load: byRange(generateDrugBudgetReport), prewarm: () => defaultRanges() },
+  { name: 'drug-compare', label: 'ปริมาณการใช้ยา · เปรียบเทียบรายการยา', source: 'mock', version: 13, load: mock(p => generateDrugCompare(p.code, p.end)) },
+  { name: 'readmit', label: 'Re-admit (28 วัน)', source: 'mock', version: 12, load: mock(p => generateReadmitReport(p.start, p.end, p.ward)), prewarm: () => defaultRanges({ ward: 'all' }) },
+  { name: 'referral', label: 'ข้อมูลการส่งต่อ (Refer)', source: 'mock', version: 12, load: mock(p => generateReferralReport(p.start, p.end, p.point)), prewarm: () => defaultRanges({ point: 'all' }) },
 ];
 
 const byName = new Map(REPORTS.map(r => [r.name, r]));

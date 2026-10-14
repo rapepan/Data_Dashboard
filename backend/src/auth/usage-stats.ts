@@ -28,6 +28,7 @@ const PAGE_OF_API: [prefix: string, key: string][] = [
   ['/api/dental/', 'dental'],
   ['/api/physio/', 'physio'],
   ['/api/telemedicine/', 'tele'],
+  ['/api/telepharmacy/', 'telepharmacy'],
   ['/api/postal-drug/', 'postal'],
   ['/api/thai-medicine/', 'thaimed'],
   ['/api/drug-budget/', 'drugbudget'],

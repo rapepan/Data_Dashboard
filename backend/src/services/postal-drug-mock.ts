@@ -1,6 +1,5 @@
+import { fiscalMonthly, rangeTotal as dailyTotal } from './daily';
 import type { LabelValue, PostalDrugReport } from '../types/reports.types';
-import { fiscalSeries } from './fiscal-series';
-import { POSTAL_DELIVERIES } from './fiscal-data';
 
 /**
  * ข้อมูลจำลองหน้าการส่งยาทางไปรษณีย์ — อิง HOSxP รพ.บางเสาธง (ตรวจเมื่อ 30/09/2569)
@@ -10,8 +9,6 @@ import { POSTAL_DELIVERIES } from './fiscal-data';
  * เมื่อต่อจริงให้แทนที่ด้วย query โดยคง response shape เดิม (types/reports.types.ts)
  */
 const MONTHS = ['ต.ค.', 'พ.ย.', 'ธ.ค.', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.'];
-/** ปีงบ 2569 ส่ง 16 ครั้ง · ต.ค. 2569 ยังไม่มี (ยอดรายเดือนจริงอยู่ใน fiscal-data.ts) */
-const PER_DAY = 16 / 365;
 const ITEMS_PER_DELIVERY = 4.4;
 
 /** สัดส่วนจากข้อมูลจริงทั้งหมด (ชื่อตามตารางในฐาน) */
@@ -31,16 +28,11 @@ const DISEASES: [string, string, number][] = [
   ['R104', 'ปวดท้องน้อยแบบอื่นและไม่ระบุรายละเอียด', 1],
 ];
 
-const jitter = (value: number, pct = 0.3) => Math.max(0, Math.round(value * (1 + (Math.random() * 2 - 1) * pct)));
 
 function iso(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function daysBetween(start: string, end: string) {
-  const ms = new Date(`${end}T00:00:00`).getTime() - new Date(`${start}T00:00:00`).getTime();
-  return Math.max(1, Math.round(ms / 86400000) + 1);
-}
 
 /** แบ่งยอดรวมตามน้ำหนัก ให้ผลรวมเท่ายอดรวมพอดี (ปัดเศษแบบเศษมากได้ก่อน) */
 function allocate(total: number, weights: [string, number][]): LabelValue[] {
@@ -55,12 +47,12 @@ function allocate(total: number, weights: [string, number][]): LabelValue[] {
 export function generatePostalDrugReport(start: string, end: string): PostalDrugReport {
   const endDate = new Date(`${end}T00:00:00`);
   const fyStartYear = endDate.getMonth() >= 9 ? endDate.getFullYear() : endDate.getFullYear() - 1;
-  const currentFyMonth = (endDate.getMonth() + 3) % 12;
 
   // ยอดจริงรายเดือน (จำนวนน้อย ไม่สุ่ม) · เดือนของวันสิ้นสุดนับถึงวันนั้น · เดือนที่ยังไม่ถึง = 0
-  const monthly = fiscalSeries(fyStartYear, POSTAL_DELIVERIES, end, 0);
+  // ยอดจริงรายวัน (daily-data.ts: prscrpt_delivery_med) — รายเดือนของปีงบ / ช่วงที่เลือก / เดือนนี้
+  const monthly = fiscalMonthly('postal', end);
   const fiscalTotal = monthly.reduce((a, b) => a + b, 0);
-  const rangeTotal = jitter(PER_DAY * daysBetween(start, end));
+  const rangeTotal = dailyTotal('postal', start, end);
   const topTotal = Math.max(fiscalTotal, 1);
 
   return {
@@ -69,7 +61,7 @@ export function generatePostalDrugReport(start: string, end: string): PostalDrug
     fiscalYear: fyStartYear + 1 + 543,
     // คนเดิมรับยาทางไปรษณีย์ซ้ำได้ (จริง 22 ครั้ง / ~19 คน)
     range: { total: rangeTotal, patients: Math.min(rangeTotal, Math.round(rangeTotal * 0.86)), items: Math.round(rangeTotal * ITEMS_PER_DELIVERY) },
-    month: { total: monthly[currentFyMonth], start: iso(new Date(endDate.getFullYear(), endDate.getMonth(), 1)), end: iso(new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0)) },
+    month: { total: dailyTotal('postal', iso(new Date(endDate.getFullYear(), endDate.getMonth(), 1)), end), start: iso(new Date(endDate.getFullYear(), endDate.getMonth(), 1)), end: iso(new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0)) },
     fiscal: { total: fiscalTotal },
     itemsPerDelivery: ITEMS_PER_DELIVERY,
     monthly: { labels: MONTHS, values: monthly },

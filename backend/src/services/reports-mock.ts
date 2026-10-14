@@ -1,6 +1,10 @@
 import { opdTopDiseases } from './top-diseases-mock';
 import { opdPrescriptions, opdVisits } from './rx-daily';
-import { changePct, QUEUE_AVERAGE, QUEUE_STEPS, queueSeries, rangeSum, SERIES } from './real-series';
+import { BD, hourly as hourlyOf, icdName, monthShares, rankItems, sumMonths, sumMonthsVec, workdaysIn } from './breakdown';
+import { DAILY_FROM, DAILY_UPTO } from './daily-data';
+import { generateQueueReport } from './queue-mock';
+import { changeVsPrevious, dayValue, previousRange as visitsPrev, rangeTotal as dailyTotal } from './daily';
+import { changePct, QUEUE_AVERAGE, QUEUE_STEPS, queueSeries, rangeMean, SERIES } from './real-series';
 import type { AlertStatus, ErReport, IpdReport, LabelValue, Metric, OpdReport } from '../types/reports.types';
 
 /**
@@ -8,7 +12,6 @@ import type { AlertStatus, ErReport, IpdReport, LabelValue, Metric, OpdReport } 
  * เมื่อต่อ HOSxP ให้แทนที่แต่ละฟังก์ชันด้วยการ query จริง โดยคง response shape เดิม (types/reports.types.ts)
  */
 const rnd = (min: number, max: number) => Math.round(min + Math.random() * (max - min));
-const jitter = (value: number, pct = 0.08) => Math.max(0, Math.round(value * (1 + (Math.random() * 2 - 1) * pct)));
 /** ค่า + % เทียบช่วงก่อนที่คำนวณจากยอดรายเดือนจริง (real-series.ts) */
 const metric = (value: number, change: number | undefined): Metric => (change === undefined ? { value } : { value, change });
 
@@ -27,46 +30,53 @@ function statusAgainst(value: number, target: number, higherIsBad = true): Alert
 
 /* ------------------------------- OPD ------------------------------- */
 export function generateOpdReport(start: string, end: string): OpdReport {
-  // ปริมาณงานเทียบ HOSxP รพ.บางเสาธง (ตรวจเมื่อ 30/09/2569):
-  // ~6,300 ครั้ง/เดือน (~3,950 คน), วันทำการ 240-330 ครั้ง/วัน, เสาร์-อาทิตย์ ~65
-  // ผู้ป่วยใหม่ (ไม่เคยมาก่อน) ~8% ของครั้ง · นัดมาตามนัด ~36% ของครั้ง · มาตามนัด ~70% ของนัดทั้งหมด
-  const scale = daysBetween(start, end) / 30;
+  // ทุกตัวเลขอิงยอดจริงของ HOSxP (daily-data.ts รายวัน · breakdown-data.ts รายเดือน) — ช่วงที่เลือกรวมจากยอดจริง
   // ยอดของช่วงวันที่ = visit จริงรายวัน (rx-daily-data.ts) — ตรงกับตัวหารของ "ใบสั่งยาที่มียา" ในหน้าเดียวกัน
   // วันที่ไม่มีข้อมูลใช้ค่าเฉลี่ยตามวันในสัปดาห์
   const visits = opdVisits(start, end);
   const total = visits.value;
-  const newPatients = jitter(rangeSum(SERIES.newPatients, start, end) ?? total * 0.08, 0.03);
+  // ผู้ป่วยใหม่ (มาครั้งแรกในรอบ 5 ปี) — ยอดจริงรายวัน
+  const newPatients = Math.min(total, dailyTotal('newpt', start, end));
 
-  // เฉลี่ยต่อวันทำการ รายชั่วโมง (ovst.vsttime 30 วันล่าสุด) — พีค 08:00 และรอบบ่าย 13:00
+  // เฉลี่ยต่อวันทำการ รายชั่วโมง 06:00–17:00 (ovst.vsttime วันทำการ ของเดือนที่ทับกับช่วง) · มาตามนัด = visit ที่ผูกกับ oapp
   const hours = ['06:00', '07:00', '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
-  const hourAvg = [15.0, 31.3, 53.9, 45.6, 28.6, 14.5, 9.8, 33.0, 16.1, 6.8, 5.3, 3.3];
-  const hourTotal = hourAvg.map(v => jitter(v, 0.06));
-  // ช่วงเช้าตรู่/บ่ายโมง เป็นผู้ป่วยนัดคลินิกมากกว่าช่วงอื่น
-  const apptShare = [0.45, 0.45, 0.4, 0.36, 0.3, 0.25, 0.2, 0.42, 0.3, 0.25, 0.2, 0.15];
-  const appointment = hourTotal.map((v, i) => Math.round(v * apptShare[i]));
+  const perHour = hourlyOf(BD.opdHour, start, end);
+  const wd = Math.max(1, workdaysIn(start, end));
+  const hourTotal = hours.map((_, i) => Math.round(perHour[i + 6][0] / wd));
+  const appointment = hours.map((_, i) => Math.min(hourTotal[i], Math.round(perHour[i + 6][1] / wd)));
   const walkin = hourTotal.map((v, i) => v - appointment[i]);
   const peakIndex = hourTotal.indexOf(Math.max(...hourTotal));
 
 
-  // จำนวนผู้ป่วยที่ผ่านแต่ละจุด = สัดส่วนที่มีเวลาบันทึกใน service_time (30 วันล่าสุด)
+  // จำนวนผู้ป่วยที่ผ่านแต่ละจุด = visit ที่มีเวลาบันทึกใน service_time ของช่วง (ยอดจริงรายวัน)
   // ไม่ใช่ทุกคนผ่านทุกจุด เช่น ทันตกรรม/กายภาพ ไม่ผ่านแพทย์ · สิทธิที่ไม่ต้องจ่ายเงินไม่ผ่านการเงิน
-  const flowRatios: [string, number][] = [
-    ['ออกบัตร', 1], ['คัดกรองเสร็จ', 0.94], ['แพทย์ตรวจเสร็จ', 0.692], ['ห้องยา', 0.859], ['การเงิน', 0.517],
+  const flow: LabelValue[] = [
+    { label: 'ออกบัตร', value: dailyTotal('flow', start, end, 0) },
+    { label: 'คัดกรองเสร็จ', value: dailyTotal('flow', start, end, 1) },
+    { label: 'แพทย์ตรวจเสร็จ', value: dailyTotal('flow', start, end, 2) },
+    { label: 'ห้องยา', value: dailyTotal('flow', start, end, 3) },
+    { label: 'การเงิน', value: dailyTotal('flow', start, end, 4) },
   ];
 
-  // เวลารอแต่ละขั้นตอนจาก service_time (เฉลี่ย 12 เดือน วันทำการ) — เป้าหมายเป็นค่าที่ตั้งไว้ ไม่ใช่ข้อมูลในฐาน
+  // เวลารอแต่ละขั้นตอน = ชุดเดียวกับหน้าระยะเวลารอคอยคิว (service_time จริงของช่วง) — เป้าหมายเป็นค่าที่ตั้งไว้ ไม่ใช่ข้อมูลในฐาน
   const TARGETS = [5, 15, 40, 20, 15];
-  const waitSteps = QUEUE_STEPS.map((step, i) => ({ step, avgMinutes: Math.round(jitter(QUEUE_AVERAGE[i] * 10, 0.05) / 10), targetMinutes: TARGETS[i] }));
+  const queue = generateQueueReport(start, end);
+  const waitSteps = QUEUE_STEPS.map((step, i) => ({ step, avgMinutes: Math.round(queue.average.steps[i] ?? QUEUE_AVERAGE[i]), targetMinutes: TARGETS[i] }));
   // เวลารวมทั้งกระบวนการ (มาถึง → การเงิน) และเวลาจนแพทย์ตรวจเสร็จ (มาถึง → service5)
   const avgWait = waitSteps.reduce((sum, s) => sum + s.avgMinutes, 0);
   const avgDoctor = waitSteps.slice(0, 3).reduce((sum, s) => sum + s.avgMinutes, 0);
 
-  // นัดทั้งหมด ≈ 52% ของจำนวนครั้ง, มาตามนัด ~70% ของนัด → ที่เหลือคือ ยกเลิก/เลื่อน + ไม่มาตามนัด
-  const onTime = Math.round(total * 0.36);
-  const walkinTotal = total - onTime;
-  const appointments = Math.round(onTime / (rnd(68, 72) / 100));
-  const cancelled = Math.round(appointments * 0.05);
+  // นัดหมายของช่วง (oapp ตามวันนัด — ยอดจริงรายวัน): มาตามนัด = มี visit ผูกกับนัด · ยกเลิก = สถานะยกเลิก · ที่เหลือ = ไม่มาตามนัด
+  const appointments = Math.max(1, dailyTotal('appt', start, end, 0));
+  const onTime = Math.min(total, dailyTotal('appt', start, end, 1));
+  const cancelled = dailyTotal('appt', start, end, 2);
   const noShow = Math.max(0, appointments - onTime - cancelled);
+  const walkinTotal = total - onTime;
+  const prevAppt = (() => {
+    const p = visits.prevRange;
+    const n = dailyTotal('appt', p.start, p.end, 0);
+    return n ? Math.round((dailyTotal('appt', p.start, p.end, 1) / n) * 100) : null;
+  })();
   const satisfaction = Number((4.4 + Math.random() * 0.3).toFixed(1));
 
   // ช่วง 07-08 ถึง 15-16 (เฉลี่ยต่อวันทำการ)
@@ -81,22 +91,21 @@ export function generateOpdReport(start: string, end: string): OpdReport {
     start, end,
     kpis: {
       total: metric(total, visits.change),
-      newPatients: metric(newPatients, changePct(SERIES.newPatients, start, end)),
-      // ผู้ป่วยเก่า = ทั้งหมด − ใหม่ ทั้งช่วงนี้และช่วงก่อน (ทั้งหมดจากยอดรายวันจริง · ใหม่จากยอดรายเดือนจริง)
+      newPatients: metric(newPatients, changeVsPrevious('newpt', start, end)),
+      // ผู้ป่วยเก่า = ทั้งหมด − ใหม่ ทั้งช่วงนี้และช่วงก่อน (ยอดจริงรายวันทั้งคู่)
       oldPatients: metric(total - newPatients, (() => {
-        const prevNew = rangeSum(SERIES.newPatients, visits.prevRange.start, visits.prevRange.end);
-        const prevOld = prevNew === null ? 0 : visits.previous - prevNew;
+        const prevOld = visits.previous - dailyTotal('newpt', visits.prevRange.start, visits.prevRange.end);
         return prevOld > 0 ? Math.round(((total - newPatients - prevOld) / prevOld) * 100) : undefined;
       })()),
-      avgWait: metric(avgWait, changePct(queueSeries([0, 1, 2, 3, 4]), start, end, 'mean')),
+      avgWait: metric(avgWait, (() => { const p = generateQueueReport(visits.prevRange.start, visits.prevRange.end).average.total; return p ? Math.round(((queue.average.total - p) / p) * 100) : undefined; })()),
       avgDoctor: metric(avgDoctor, changePct(queueSeries([0, 1, 2]), start, end, 'mean')),
       satisfaction: { value: satisfaction, change: 0.2, changeIsAbsolute: true },
     },
     byHour: { labels: hours, total: hourTotal, walkin, appointment, peakLabel: `${hours[peakIndex]} - ${hours[Math.min(peakIndex + 1, hours.length - 1)]}`, peakValue: hourTotal[peakIndex] },
-    topDiseases: opdTopDiseases(scale),
-    flow: flowRatios.map(([label, ratio]) => ({ label, value: Math.round(total * ratio) })),
+    topDiseases: opdTopDiseases(start, end),
+    flow,
     waitSteps,
-    appointment: { walkin: walkinTotal, onTime, cancelled, noShow, onTimeRate: Math.round((onTime / appointments) * 100), onTimeRateChange: 2 },
+    appointment: { walkin: walkinTotal, onTime, cancelled, noShow, onTimeRate: Math.round((onTime / appointments) * 100), onTimeRateChange: prevAppt === null ? 0 : Math.round((onTime / appointments) * 100) - prevAppt },
     satisfaction: {
       score: satisfaction,
       change: 0.2,
@@ -125,11 +134,14 @@ export function generateOpdReport(start: string, end: string): OpdReport {
 // หอที่เปิดใช้ 3 หอ รวม 45 เตียง · admit ~168/เดือน (~5.3/วัน) · LOS เฉลี่ย 3.67 วัน · CMI 0.869
 // Re-admit ≤ 28 วัน 251 ครั้ง / 2,018 admit (12.4%)
 export function generateIpdReport(start: string, end: string): IpdReport {
-  const scale = daysBetween(start, end) / 30;
+  // ผู้ป่วยคงค้าง ณ สิ้นวันสิ้นสุด (ยอดจริง: admit − จำหน่ายสะสม · daily-data.ts census) — วันที่ยังไม่มีข้อมูลใช้เมื่อวาน
+  const refDay = end > DAILY_UPTO ? DAILY_UPTO : end;
+  const census = (col: number) => Math.round(dayValue('census', refDay, col));
+  // SEMI ICU ไม่มีผู้ป่วยลงหอนี้ในฐาน (ipt.ward มีแค่ 02 / 07)
   const wards = [
-    { ward: 'Ward 2', beds: 28, used: rnd(22, 28) },
-    { ward: 'Home Ward', beds: 15, used: rnd(2, 5) },
-    { ward: 'SEMI ICU', beds: 2, used: rnd(0, 2) },
+    { ward: 'Ward 2', beds: 28, used: census(1) },
+    { ward: 'Home Ward', beds: 15, used: census(2) },
+    { ward: 'SEMI ICU', beds: 2, used: 0 },
   ];
   const totalBeds = wards.reduce((sum, w) => sum + w.beds, 0);
   const usedBeds = wards.reduce((sum, w) => sum + w.used, 0);
@@ -139,28 +151,50 @@ export function generateIpdReport(start: string, end: string): IpdReport {
   const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
   const endDay = new Date(`${end}T00:00:00`);
   const trendMonths = Array.from({ length: 9 }, (_, i) => new Date(endDay.getFullYear(), endDay.getMonth() - 8 + i, 1));
-  const monthValue = (series: Record<string, number | null>, d: Date, last: boolean, fallback: number) => {
-    const v = series[`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`] ?? fallback;
-    return jitter(last ? (v * endDay.getDate()) / new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate() : v, 0.03);
-  };
+  // ยอดจริงต่อเดือน (เดือนสุดท้ายนับถึงวันสิ้นสุด) · ผู้ป่วยคงค้าง = ค่า ณ สิ้นเดือน (เดือนสุดท้าย = วันสิ้นสุด)
+  const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const monthRange = (d: Date, i: number): [string, string] => [isoOf(d), i === 8 ? end : isoOf(new Date(d.getFullYear(), d.getMonth() + 1, 0))];
   const months = trendMonths.map(d => TH_MONTHS[d.getMonth()]);
-  const admissions = trendMonths.map((d, i) => monthValue(SERIES.admit, d, i === 8, 168));
-  const discharges = trendMonths.map((d, i) => monthValue(SERIES.discharge, d, i === 8, 167));
-  const current = admissions.map((v, i) => (i === admissions.length - 1 ? usedBeds : jitter((v * 3.67) / 30, 0.08)));
+  const admissions = trendMonths.map((d, i) => dailyTotal('admit', ...monthRange(d, i)));
+  const discharges = trendMonths.map((d, i) => dailyTotal('dch', ...monthRange(d, i)));
+  const current = trendMonths.map((d, i) => {
+    const last = monthRange(d, i)[1];
+    return Math.round(dayValue('census', last > DAILY_UPTO ? DAILY_UPTO : last));
+  });
 
   const statusCounts: [string, number][] = [['รักษาต่อเนื่อง', 0.659], ['รอจำหน่าย', 0.159], ['รอผลตรวจ', 0.093], ['รอปรึกษาแพทย์', 0.058], ['อื่น ๆ', 0.031]];
   // an_stat.los: < 3 วัน 47.7% · 3-5 วัน 35.2% · 6-10 วัน 13.9% · > 10 วัน 3.3%
-  const losBuckets: [string, number][] = [['< 3 วัน', 0.477], ['3 - 5 วัน', 0.352], ['6 - 10 วัน', 0.139], ['> 10 วัน', 0.033]];
-  const readmission = Number((11.8 + Math.random() * 1.2).toFixed(1));
-  const avgLos = Number((3.5 + Math.random() * 0.35).toFixed(1));
+  // LOS: ผู้ที่จำหน่ายในช่วงที่เลือก แยกตามจำนวนวันนอน (an_stat.los — ยอดจริงรายวัน)
+  const losBuckets: [string, number][] = [['< 3 วัน', 2], ['3 - 5 วัน', 3], ['6 - 10 วัน', 4], ['> 10 วัน', 5]];
+  // Re-admit 28 วัน = admit ซ้ำ ÷ admit ทั้งหมดของช่วง (ยอดจริง)
+  const admitsInRange = dailyTotal('admit', start, end);
+  const readmission = admitsInRange ? Number(((dailyTotal('readmit', start, end) / admitsInRange) * 100).toFixed(1)) : 0;
+  // สัดส่วน % ของช่วง (สิทธิ / อายุ / หมวดโรค — an_stat ตามวันที่ admit)
+  const pctList = (set: Record<string, Record<string, number>>, top: number, other = 'อื่น ๆ'): LabelValue[] => {
+    const items = rankItems(set, start, end);
+    const sum = items.reduce((a, [, v]) => a + v, 0) || 1;
+    const head = items.slice(0, top).map(([label, v]) => ({ label, value: Math.round((v / sum) * 100) }));
+    const rest = 100 - head.reduce((a, b) => a + b.value, 0);
+    return rest > 0 && items.length > top ? [...head, { label: other, value: rest }] : head;
+  };
+  const AGES = ['0-18', '19-40', '41-60', '61-80', '> 80'];
+  const ageTotals = AGES.map(a => sumMonths(BD.ipdAge[a], monthShares(start, end)));
+  const ageSum = ageTotals.reduce((a, b) => a + b, 0) || 1;
+  // รอเตียง (ipt_admit_queue): จำนวนขอ admit ของวันสิ้นสุด (ตามสัดส่วนเดือน) · เวลารอเฉลี่ยของช่วง
+  const queue = sumMonthsVec(BD.admitQueue, monthShares(start, end), 4);
+  const queueDayShare = sumMonthsVec(BD.admitQueue, monthShares(refDay, refDay), 4);
+  // LOS เฉลี่ยจริงรายเดือน (an_stat) ของช่วงที่เลือก · เดือนที่จำหน่ายยังไม่ครบ (เดือนปัจจุบัน) ใช้เดือนล่าสุดที่ครบแทน
+  const losMonths = Object.entries(SERIES.los).filter(([, v]) => v !== null);
+  const avgLos = Number((rangeMean(SERIES.los, start, end) ?? losMonths[losMonths.length - 1]?.[1] ?? 3.7).toFixed(1));
   const mainOcc = Math.round((wards[0].used / wards[0].beds) * 100);
 
   return {
     start, end,
     kpis: {
       current: metric(usedBeds, undefined),
-      admissions: metric(jitter(rangeSum(SERIES.admit, start, end) ?? 168 * scale, 0.03), changePct(SERIES.admit, start, end)),
-      discharges: metric(jitter(rangeSum(SERIES.discharge, start, end) ?? 167 * scale, 0.03), changePct(SERIES.discharge, start, end)),
+      // admit / จำหน่ายของช่วง = ยอดจริงรายวัน (daily-data.ts: ipt.regdate / ipt.dchdate)
+      admissions: metric(dailyTotal('admit', start, end), changeVsPrevious('admit', start, end)),
+      discharges: metric(dailyTotal('dch', start, end), changeVsPrevious('dch', start, end)),
       totalBeds,
       usedBeds,
       avgLos: metric(avgLos, changePct(SERIES.los, start, end, 'mean')),
@@ -168,13 +202,12 @@ export function generateIpdReport(start: string, end: string): IpdReport {
     },
     trend: { labels: months, admissions, discharges, current },
     wards,
+    // สถานะผู้ป่วยในปัจจุบัน — HOSxP ไม่มีสถานะนี้ จึงใช้สัดส่วนประมาณ × ผู้ป่วยคงค้างจริง
     patientStatus: statusCounts.map(([label, ratio]) => ({ label, value: Math.round(usedBeds * ratio) })),
-    losBuckets: losBuckets.map(([label, ratio]) => ({ label, value: Math.round(usedBeds * ratio) })),
+    losBuckets: losBuckets.map(([label, col]) => ({ label, value: dailyTotal('dchDetail', start, end, col) })),
     flow: [
-      // รับใหม่ ~5.3 ราย/วัน (ipt) · รอเตียง = คำขอ admit ที่ยังไม่ได้รับเข้า (ipt_admit_queue ส่วนใหญ่ได้เตียงภายในไม่ถึงชั่วโมง)
-      // ไม่แสดง "รอผลตรวจ / รอจำหน่าย" — ช่องสถานะใน ipt ไม่มีการบันทึก
-      { label: 'รับใหม่ (วันนี้)', value: rnd(3, 8) },
-      { label: 'รอเตียง', value: rnd(0, 1) },
+      { label: 'รับใหม่ (วันนี้)', value: Math.round(dayValue('admit', refDay)) },
+      { label: 'รอเตียง', value: Math.round(queueDayShare[0] + queueDayShare[1]) },
       { label: 'อยู่ระหว่างการรักษา', value: usedBeds },
     ],
     dischargePlanning: {
@@ -187,18 +220,17 @@ export function generateIpdReport(start: string, end: string): IpdReport {
       avgTurnaroundHours: Number((2.2 + Math.random() * 0.8).toFixed(1)),
       targetHours: 4,
     },
-    // ipt_admit_queue 12 เดือน: 1,769 คำขอ (~4.9/วัน) · ขอจาก ER 79% (รอ ~7 นาที) / OPD 21% (รอ ~1.1 ชม.) · รอเฉลี่ยรวม ~0.32 ชม.
-    waitingBed: { fromEr: rnd(0, 1), fromOpd: rnd(0, 1), avgWaitHours: Number((0.25 + Math.random() * 0.15).toFixed(2)) },
+    // รอเตียง (ipt_admit_queue จริง): จำนวนขอ admit ต่อวัน (ER / แผนกอื่น) · เวลารอเฉลี่ย (ขอ → admit) ของช่วง
+    waitingBed: { fromEr: Math.round(queueDayShare[0]), fromOpd: Math.round(queueDayShare[1]), avgWaitHours: queue[3] ? Number((queue[2] / queue[3]).toFixed(2)) : 0 },
     profile: {
-      // an_stat.pcode: บัตรผู้สูงอายุ 41.6% · UC 25.3% · เด็ก 0-12 ปี 10.5% · เบิกต้นสังกัด 5.9% · อื่น ๆ
-      byRight: [{ label: 'บัตรผู้สูงอายุ', value: 42 }, { label: 'บัตรประกันสุขภาพถ้วนหน้า 30 บาท', value: 25 }, { label: 'เด็ก 0 - 12 ปี', value: 11 }, { label: 'เบิกหน่วยงานต้นสังกัด', value: 6 }, { label: 'อื่น ๆ', value: 16 }],
-      byAge: [{ label: '0-18', value: 15 }, { label: '19-40', value: 12 }, { label: '41-60', value: 24 }, { label: '61-80', value: 40 }, { label: '> 80', value: 9 }],
-      // กลุ่มโรคตามหมวดของการวินิจฉัยหลัก (J / I / E / A / R — % ของ admit) · ชื่อหมวดตาม icd11_chapter.chapter_name_thai
-      topDiseases: [{ label: 'โรคของระบบหายใจ', value: 18 }, { label: 'โรคของระบบไหลเวียนโลหิต', value: 12 }, { label: 'โรคระบบต่อมไรท่อ โภชนาการ และเมตาบอลิซึม', value: 11 }, { label: 'โรคติดเชื้อหรือโรคจากพยาธิบางชนิด', value: 10 }, { label: 'อาการ อาการแสดง หรือผลการตรวจทางคลินิก ที่มิได้ระบุไว้ที่อื่น', value: 7 }],
+      // % ของ admit ในช่วง (an_stat จริง): สิทธิ 4 อันดับ + อื่น ๆ · ช่วงอายุ · หมวดโรค 5 อันดับ
+      byRight: pctList(BD.ipdRight, 4),
+      byAge: AGES.map((label, i) => ({ label, value: Math.round((ageTotals[i] / ageSum) * 100) })),
+      topDiseases: pctList(BD.ipdChapter, 5).filter(d => d.label !== 'อื่น ๆ'),
     },
     alerts: [
       { issue: `อัตราครองเตียงสูง > 90% (${mainOcc}%)`, ward: 'Ward 2', status: mainOcc > 90 ? 'critical' : 'warning', action: 'เพิ่มการจำหน่าย / ใช้ Home Ward' },
-      { issue: 'ระยะรอเตียงเฉลี่ย (ipt_admit_queue) ~20 นาที', ward: 'ER / OPD', status: 'ok', action: 'ติดตามต่อเนื่อง' },
+      { issue: `ระยะรอเตียงเฉลี่ย (ipt_admit_queue) ~${queue[3] ? Math.round((queue[2] / queue[3]) * 60) : 0} นาที`, ward: 'ER / OPD', status: 'ok', action: 'ติดตามต่อเนื่อง' },
       { issue: 'LOS > 10 วัน (มากผิดปกติ)', ward: 'Ward 2', status: 'warning', action: 'ทบทวนแผนการรักษา' },
       { issue: 'รอผลตรวจนานกว่า 24 ชม.', ward: 'ห้องปฏิบัติการ', status: 'warning', action: 'ติดตามผลตรวจ' },
       { issue: 'ส่งต่อระหว่างนอน รพ. (By Transfer)', ward: 'Ward 2', status: 'ok', action: 'ติดตามผล' },
@@ -211,36 +243,44 @@ export function generateIpdReport(start: string, end: string): IpdReport {
 // ข้อมูลจำลองอิง HOSxP รพ.บางเสาธง (er_regist ตรวจเมื่อ 30/09/2569, ย้อนหลัง 12 เดือน):
 // ~61 ครั้ง/วัน · ระดับความรุนแรง 1-5 = 0.4% / 2.4% / 11.9% / 33.4% / 51.8%
 // จำหน่าย: กลับบ้าน ส่วนใหญ่ · Admit 6.6% · ส่งต่อ 2.1% · พีคช่วงเช้า 08-11 น. และบ่ายโมง (รวมผู้ป่วยทำแผล/ฉีดยานอกเวลา OPD)
-const ER_HOURLY = [49, 22, 28, 18, 26, 17, 29, 210, 505, 719, 666, 304, 175, 692, 436, 295, 284, 274, 250, 193, 115, 96, 63, 33];
-const ER_TRIAGE = [0.004, 0.024, 0.119, 0.334, 0.519];
 
 export function generateErReport(start: string, end: string): ErReport {
   const days = daysBetween(start, end);
-  const total = jitter(rangeSum(SERIES.er, start, end) ?? 61 * days, 0.03);
+  // ผู้ป่วย ER ของช่วง = ยอดจริงรายวัน (daily-data.ts: er_regist)
+  const total = dailyTotal('er', start, end);
   // สัดส่วน (ระดับความรุนแรง / จำหน่าย) คงที่ → % เทียบช่วงก่อนเท่ากับของยอดรวม
-  const erChange = changePct(SERIES.er, start, end);
+  const erChange = changeVsPrevious('er', start, end);
   const labels = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`);
-  const shapeSum = ER_HOURLY.reduce((a, b) => a + b, 0);
-  const perHour = ER_HOURLY.map(f => Math.round((total * f) / shapeSum));
-  const triage1 = perHour.map(v => Math.round(v * ER_TRIAGE[0]));
-  const triage2 = perHour.map(v => Math.round(v * ER_TRIAGE[1]));
-  const triage3 = perHour.map(v => Math.round(v * ER_TRIAGE[2]));
-  const triage45 = perHour.map((v, i) => Math.max(0, v - triage1[i] - triage2[i] - triage3[i]));
-  const peakCount = perHour.slice(8, 11).reduce((a, b) => a + b, 0);
+  // รายชั่วโมง × ระดับ (1 / 2 / 3 / 4–5) ของเดือนที่ทับกับช่วง (er_regist + ovst.vsttime) ปรับให้รวมเท่ายอดจริงของช่วง
+  const hourLv = hourlyOf(BD.erHour, start, end);
+  const hourSum = hourLv.reduce((a, v) => a + v[0] + v[1] + v[2] + v[3], 0) || 1;
+  const fitHour = (v: number) => Math.round((v / hourSum) * total);
+  const triage1 = hourLv.map(v => fitHour(v[0]));
+  const triage2 = hourLv.map(v => fitHour(v[1]));
+  const triage3 = hourLv.map(v => fitHour(v[2]));
+  const triage45 = hourLv.map(v => fitHour(v[3]));
+  const perHour = labels.map((_, h) => triage1[h] + triage2[h] + triage3[h] + triage45[h]);
+  // ช่วง 3 ชั่วโมงที่หนาแน่นที่สุด
+  const windows = labels.map((_, h) => (h <= 21 ? perHour[h] + perHour[h + 1] + perHour[h + 2] : -1));
+  const peakStart = windows.indexOf(Math.max(...windows));
+  const peakCount = Math.max(0, windows[peakStart]);
 
+  // ระดับความเร่งด่วน / การจำหน่าย / ระยะเวลา — ยอดจริงรายวัน (er_emergency_type / er_dch_type / เวลาเข้า ER → แพทย์ตรวจ → เสร็จ)
+  const lv = (i: number) => dailyTotal('erLevel', start, end, i);
   const triage: LabelValue[] = [
     // ชื่อตาม er_emergency_type
-    { label: '1: Resuscitate / Life threatening', value: Math.round(total * ER_TRIAGE[0]) },
-    { label: '2: Emergency', value: Math.round(total * ER_TRIAGE[1]) },
-    { label: '3: Urgency', value: Math.round(total * ER_TRIAGE[2]) },
-    { label: '4: Semi Urgency / Acute', value: Math.round(total * ER_TRIAGE[3]) },
-    { label: '5: Non Urgency / Non Acute', value: 0 },
+    { label: '1: Resuscitate / Life threatening', value: lv(0) },
+    { label: '2: Emergency', value: lv(1) },
+    { label: '3: Urgency', value: lv(2) },
+    { label: '4: Semi Urgency / Acute', value: lv(3) },
+    { label: '5: Non Urgency / Non Acute', value: lv(4) },
   ];
-  triage[4].value = total - triage.slice(0, 4).reduce((sum, t) => sum + t.value, 0);
-
-  const waitDoctor = rnd(36, 48);
-  const admit = Math.round(total * 0.066);
-  const transfer = Math.round(total * 0.021);
+  const dch = (i: number) => dailyTotal('erDch', start, end, i);
+  const admit = dch(2);
+  const transfer = dch(1);
+  // เวลารอแพทย์เฉลี่ยจริง (ลงเวลาใน HOSxP ค่อนข้างเร็วหลังเข้า ER)
+  const waitN = dailyTotal('erTime', start, end, 1);
+  const waitDoctor = waitN ? Math.round(dailyTotal('erTime', start, end, 0) / waitN) : 0;
   // ปริมาณในแต่ละขั้นตอนต่อวัน (สัดส่วนจากหน้าจอตัวอย่าง ปรับตามปริมาณจริง ~61 ครั้ง/วัน)
   const scaleCount = (v: number) => Math.round(v * days * (61 / 312));
 
@@ -248,14 +288,18 @@ export function generateErReport(start: string, end: string): ErReport {
     start, end,
     kpis: {
       total: metric(total, erChange),
-      emergency: metric(triage[0].value + triage[1].value, erChange),
+      emergency: metric(triage[0].value + triage[1].value, (() => {
+        const p = visitsPrev(start, end);
+        const before = dailyTotal('erLevel', p.start, p.end, 0) + dailyTotal('erLevel', p.start, p.end, 1);
+        return before ? Math.round(((triage[0].value + triage[1].value - before) / before) * 100) : undefined;
+      })()),
       avgWaitDoctor: metric(waitDoctor, undefined),
-      admit: metric(admit, erChange),
-      discharge: metric(total - admit - transfer, erChange),
-      transfer: metric(transfer, erChange),
+      admit: metric(admit, changeVsPrevious('erDch', start, end, 2)),
+      discharge: metric(dch(0), changeVsPrevious('erDch', start, end, 0)),
+      transfer: metric(transfer, changeVsPrevious('erDch', start, end, 1)),
       satisfaction: { value: Number((4.3 + Math.random() * 0.3).toFixed(1)), change: 0.3, changeIsAbsolute: true },
     },
-    byHour: { labels, triage1, triage2, triage3, triage45, peakLabel: '08:00 - 11:00', peakValue: peakCount, peakPct: Math.round((peakCount / total) * 100) },
+    byHour: { labels, triage1, triage2, triage3, triage45, peakLabel: `${labels[peakStart]} - ${labels[Math.min(23, peakStart + 3)] ?? '24:00'}`, peakValue: peakCount, peakPct: total ? Math.round((peakCount / total) * 100) : 0 },
     triage,
     stepTimes: [
       { step: 'ลงทะเบียน (Registration)', minutes: rnd(6, 10), targetMinutes: 10 },
@@ -279,14 +323,18 @@ export function generateErReport(start: string, end: string): ErReport {
     // ชื่อตาม er_dch_type
     disposition: [
       { label: 'Admitted', value: admit },
-      { label: 'กลับบ้าน', value: total - admit - transfer },
+      { label: 'กลับบ้าน', value: dch(0) },
       { label: 'ส่งต่อสถานพยาบาลอื่น', value: transfer },
-    ],
+      { label: 'รับไว้สังเกตอาการ', value: dch(4) },
+      { label: 'เสียชีวิต', value: dch(3) },
+      { label: 'ไม่ระบุ', value: dch(5) },
+    ].filter(d => d.value > 0),
+    // อยู่ใน ER (เวลาเข้า → เสร็จ) เฉพาะที่ลงเวลาครบ — ยอดจริงรายวัน
     losBuckets: [
-      { label: '< 2 ชม.', value: Math.round(total * 0.24) },
-      { label: '2 - 4 ชม.', value: Math.round(total * 0.36) },
-      { label: '4 - 6 ชม.', value: Math.round(total * 0.27) },
-      { label: '> 6 ชม.', value: Math.round(total * 0.13) },
+      { label: '< 2 ชม.', value: dailyTotal('erTime', start, end, 2) },
+      { label: '2 - 4 ชม.', value: dailyTotal('erTime', start, end, 3) },
+      { label: '4 - 6 ชม.', value: dailyTotal('erTime', start, end, 4) },
+      { label: '> 6 ชม.', value: dailyTotal('erTime', start, end, 5) },
     ],
     // อัตรากำลัง/ทรัพยากรไม่มีในฐาน — ประมาณตามขนาด รพ.ชุมชน (ER เวรละแพทย์ 1-2 คน)
     resources: [
@@ -296,14 +344,14 @@ export function generateErReport(start: string, end: string): ErReport {
       { label: 'ห้องตรวจ', used: rnd(1, 2), total: 2 },
     ],
     // การวินิจฉัยหลักของผู้ป่วย ER (vn_stat.pdx): ล้างแผล 29.5% · ไข้หวัด 4.6% · วัคซีนพิษสุนัขบ้า 3.7% · เวียนศีรษะ 2.6% · กระเพาะลำไส้อักเสบ 2.6%
-    topCauses: [
-      // ชื่อตาม icd101.tname
-      { label: 'ล้างแผล', value: Math.round(total * 0.295) },
-      { label: 'เยื่อบุจมูกและลำคออักเสบ (ไข้หวัด)', value: Math.round(total * 0.046) },
-      { label: 'รับวัคซีนโรคกลัวน้ำ (พิษสุนัขบ้า)', value: Math.round(total * 0.037) },
-      { label: 'เวียนศีรษะ', value: Math.round(total * 0.026) },
-      { label: 'กระเพาะอาหารกับลำไส้อักเสบ และลำไส้ใหญ่อักเสบจากสาเหตุที่ไม่ระบุรายละเอียด', value: Math.round(total * 0.026) },
-    ],
+    // ยอดจริงรายเดือนต่อรหัส (vn_stat.pdx ของผู้ป่วย ER) รวมตามช่วง · ชื่อตาม icd101 (ไทยถ้ามี)
+    topCauses: (() => {
+      const items = rankItems(BD.erDx, start, end).slice(0, 5);
+      const all = rankItems(BD.erDx, start, end).reduce((a, [, v]) => a + v, 0);
+      // ช่วงนอกข้อมูล: ปรับตามยอด ER จริงของช่วง
+      const fit = all && (end < DAILY_FROM || start > DAILY_UPTO) ? total / all : 1;
+      return items.map(([code, v]) => { const n = icdName(code); return { label: n.nameTh ?? n.name, value: Math.round(v * fit) }; });
+    })(),
     alerts: [
       { issue: 'ผู้ป่วยรอพบแพทย์ > 60 นาที', status: 'critical' },
       { issue: 'Lab Turnaround Time สูง', status: 'warning' },

@@ -123,9 +123,15 @@ export default function DrugBudgetPage() {
         });
         const sums = (r: DrugBudgetReport) => {
           const l = { modern: r.topDrugs.modern.filter(pass), thai: r.topDrugs.thai.filter(pass), inhouse: r.topDrugs.inhouse.filter(pass) };
-          return { lists: l, byType: { modern: total(l.modern), thai: total(l.thai), inhouse: total(l.inhouse) }, all: total([...l.modern, ...l.thai, ...l.inhouse]) };
+          return {
+            lists: l,
+            byType: { modern: total(l.modern), thai: total(l.thai), inhouse: total(l.inhouse) },
+            // ยาแผนปัจจุบัน = ยาสามัญ + ยาผลิตใช้เอง (inhouse ทุกรายการเป็นแผนปัจจุบัน — sks_product_category_id = 2)
+            current: total([...l.modern, ...l.inhouse]),
+            all: total([...l.modern, ...l.thai, ...l.inhouse]),
+          };
         };
-        const { lists, byType, all } = sums(data);
+        const { lists, byType, current, all } = sums(data);
         // ป้ายเทียบช่วงก่อน — ปริมาณยา / เงิน ไม่บอกว่าดีหรือแย่ (สีกลาง)
         const vs = (pick: (t: ReturnType<typeof sums>) => number) => vsPrev(r => pick(sums(r)), 'none');
         const edLabel = edFilter === 'all' ? '' : edFilter === 'ed' ? ' · ในบัญชียาหลัก' : ' · นอกบัญชียาหลัก';
@@ -134,6 +140,21 @@ export default function DrugBudgetPage() {
           ? (data.totals.value ? (data.totals.ed.value / data.totals.value) * 100 : 0)
           : (data.totals.qty ? (data.totals.ed.qty / data.totals.qty) * 100 : 0);
         const margin = all.value - all.cost;
+        const pctOf = (part: number, whole: number) => (whole ? ((part / whole) * 100).toFixed(1) : '0.0');
+        // แถวการ์ดของกลุ่มยา 1 กลุ่ม: ปริมาณ / ราคาทุน / ราคาขาย / ส่วนต่าง
+        const groupRow = (key: 'current' | 'thai', g: { qty: number; cost: number; value: number }, items: number) => {
+          const pick = (t: ReturnType<typeof sums>) => (key === 'current' ? t.current : t.byType.thai);
+          const diff = g.value - g.cost;
+          return (
+            <section className="grid-4">
+              <KpiCard accent="indigo" icon="fa-boxes-stacked" title="ปริมาณ" value={formatNumber(g.qty)} unit="ชิ้น" badgeIcon="fa-list" badge={`${items} รายการ`} change={vs(t => pick(t).qty)} />
+              <KpiCard accent="slate" icon="fa-tags" title="ราคาทุน" value={money.format(g.cost)} unit="บาท" badgeIcon="fa-chart-pie" badge={`${pctOf(g.cost, all.cost)}% ของทุนรวม`} change={vs(t => pick(t).cost)} />
+              <KpiCard accent="plum" icon="fa-coins" title="ราคาขาย" value={money.format(g.value)} unit="บาท" badgeIcon="fa-chart-pie" badge={`${pctOf(g.value, all.value)}% ของขายรวม`} change={vs(t => pick(t).value)} />
+              <KpiCard accent={diff < 0 ? 'rose' : 'amber'} icon="fa-scale-balanced" title="ส่วนต่าง (ขาย − ทุน)" value={money.format(diff)} unit="บาท"
+                badgeIcon="fa-percent" badge={`${pctOf(diff, g.value)}% ของราคาขาย`} change={vs(t => pick(t).value - pick(t).cost)} />
+            </section>
+          );
+        };
         const p = data.patients as typeof data.patients | undefined;
         const pct = (n: number, of: number) => (of ? `${((n / of) * 100).toFixed(1)}%` : '0%');
         return (
@@ -168,13 +189,17 @@ export default function DrugBudgetPage() {
 
             {data.showMoney ? (
               <>
-                <section className="grid-4">
-                  <KpiCard accent="indigo" icon="fa-boxes-stacked" title={`ปริมาณการใช้ยารวม${edLabel}`} value={formatNumber(all.qty)} unit="ชิ้น" badgeIcon="fa-calendar-days" badge={period} change={vs(t => t.all.qty)} />
-                  <KpiCard accent="slate" icon="fa-tags" title={`ราคาทุนรวม${edLabel}`} value={money.format(all.cost)} unit="บาท" badgeIcon="fa-calendar-days" badge={period} change={vs(t => t.all.cost)} />
-                  <KpiCard accent="plum" icon="fa-coins" title={`ราคาขายรวม${edLabel}`} value={money.format(all.value)} unit="บาท" badgeIcon="fa-calendar-days" badge={period} change={vs(t => t.all.value)} />
-                  <KpiCard accent={margin < 0 ? 'rose' : 'amber'} icon="fa-scale-balanced" title="ส่วนต่าง (ขาย − ทุน)" value={money.format(margin)} unit="บาท"
-                    badgeIcon="fa-percent" badge={`${all.value ? ((margin / all.value) * 100).toFixed(1) : '0.0'}% ของราคาขาย`} change={vs(t => t.all.value - t.all.cost)} />
-                </section>
+                <h3 className="drug-group-head"><i className="fa-solid fa-capsules" /> ยาแผนปัจจุบัน <small>ยาสามัญ + ยาผลิตใช้เอง{edLabel}</small></h3>
+                {groupRow('current', current, lists.modern.length + lists.inhouse.length)}
+                <h3 className="drug-group-head thai"><i className="fa-solid fa-seedling" /> ยาแผนไทย <small>ยาสมุนไพร{edLabel}</small></h3>
+                {groupRow('thai', byType.thai, lists.thai.length)}
+                <div className="drug-total-strip">
+                  <span><i className="fa-solid fa-calculator" /> รวมทุกกลุ่ม{edLabel} · {period}</span>
+                  <span>ปริมาณ <b>{formatNumber(all.qty)}</b> ชิ้น</span>
+                  <span>ทุน <b>{money.format(all.cost)}</b> บาท</span>
+                  <span>ขาย <b>{money.format(all.value)}</b> บาท</span>
+                  <span>ส่วนต่าง <b className={margin < 0 ? 'neg' : undefined}>{money.format(margin)}</b> บาท ({pctOf(margin, all.value)}%)</span>
+                </div>
               </>
             ) : (
               <>

@@ -1,5 +1,7 @@
 import type { DrugBudgetReport, DrugCatalogItem, DrugCompare, DrugGroupTotal, DrugItem, DrugPatients, DrugType } from '../types/reports.types';
-import { rangeSum, SERIES } from './real-series';
+import { rangeTotal as dailyTotal } from './daily';
+import { drugQtyInRange } from './breakdown';
+import { opdPrescriptions } from './rx-daily';
 import { fiscalSeries, fiscalStartYear } from './fiscal-series';
 import { DRUG_COST, DRUG_SALE, DRUG_VISITS, DRUG_VISITS_WITH } from './fiscal-data';
 import { DRUGS, type DrugSeed } from './drug-catalog';
@@ -13,7 +15,6 @@ import { DRUG_FY_MONTHLY } from './drug-history';
 const MONTHS = ['ต.ค.', 'พ.ย.', 'ธ.ค.', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.'];
 const TYPES: DrugType[] = ['modern', 'thai', 'inhouse'];
 
-const jitter = (value: number, pct = 0.08) => Math.max(0, Math.round(value * (1 + (Math.random() * 2 - 1) * pct)));
 const money = (value: number) => Math.round(value * 100) / 100;
 
 function daysBetween(start: string, end: string) {
@@ -38,10 +39,19 @@ function sum(items: Usage[]): DrugGroupTotal {
 
 export function generateDrugBudgetReport(start: string, end: string): DrugBudgetReport {
   const months = daysBetween(start, end) / 30.4;
+  // สัดส่วนรายการยา = ปริมาณจริงรายเดือนต่อรายการของช่วง (drug-history.ts · ไม่มีประวัติใช้ค่าเฉลี่ยรายเดือน)
+  // แล้วปรับให้ยอดรวม ชิ้น / ทุน / ขาย ตรงยอดจริงรายวันของช่วง (daily-data.ts)
+  const base = DRUGS.map(d => ({ d, qty: drugQtyInRange(d.code, start, end) ?? d.monthlyQty * months }));
+  const baseQty = base.reduce((a, b) => a + b.qty, 0) || 1;
+  const baseSale = base.reduce((a, b) => a + b.qty * b.d.price, 0) || 1;
+  const baseCost = base.reduce((a, b) => a + b.qty * b.d.cost, 0) || 1;
+  const fQty = dailyTotal('drug', start, end, 0) / baseQty;
+  const fSale = dailyTotal('drug', start, end, 2) / baseSale;
+  const fCost = dailyTotal('drug', start, end, 1) / baseCost;
   // ยาที่ใช้น้อย (เดือนละไม่กี่ชิ้น) ในช่วงสั้น ๆ อาจไม่มีการใช้เลย — เหมือนของจริง
-  const usage: Usage[] = DRUGS.map(d => {
-    const qty = jitter(d.monthlyQty * months);
-    return { code: d.code, name: d.name, unit: d.unit, type: d.type, ed: d.ed, qty, value: money(qty * d.price), cost: money(qty * d.cost) };
+  const usage: Usage[] = base.map(({ d, qty: q }) => {
+    const qty = Math.round(q * fQty);
+    return { code: d.code, name: d.name, unit: d.unit, type: d.type, ed: d.ed, qty, value: money(q * d.price * fSale), cost: money(q * d.cost * fCost) };
   }).filter(u => u.qty > 0);
 
   const byType = Object.fromEntries(TYPES.map(t => [t, sum(usage.filter(u => u.type === t))])) as Record<DrugType, DrugGroupTotal>;
@@ -96,10 +106,12 @@ function ratioFor(days: number, [d1, d30, d365]: number[]) {
 }
 function drugPatients(start: string, end: string): DrugPatients {
   const days = daysBetween(start, end);
-  const visits = jitter(rangeSum(SERIES.opd, start, end) ?? 207 * days, 0.03);
-  const withDrug = Math.round(visits * (0.56 + (Math.random() * 2 - 1) * 0.015));
+  // ยอดจริงรายวัน: visit ผู้ป่วยนอก / ที่มียา (rx-daily-data.ts — ชุดเดียวกับหน้า OPD) · admit (daily-data.ts)
+  const rx = opdPrescriptions(start, end);
+  const visits = rx.visits;
+  const withDrug = rx.total;
   const noDrug = visits - withDrug;
-  const admits = jitter(rangeSum(SERIES.admit, start, end) ?? 5.6 * days, 0.03);
+  const admits = dailyTotal('admit', start, end);
   return {
     opd: {
       visits, withDrug, noDrug,

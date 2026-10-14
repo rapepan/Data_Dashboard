@@ -67,7 +67,7 @@ export function printBlock(title: string, rows: BlockRow[], tone: (text: string)
 /* ---------- ชื่อหน้าจาก path ของ API (ใช้นับหน้าที่เปิดมากสุด) ---------- */
 const PAGE_LABEL: Record<string, string> = {
   dashboard: 'หน้าแรก', icd10: 'ค้นหาโรค', queue: 'คิว', opd: 'OPD', ipd: 'IPD', er: 'ER',
-  dental: 'ทันตกรรม', physio: 'กายภาพ', telemedicine: 'การแพทย์ทางไกล', 'postal-drug': 'ส่งยาไปรษณีย์',
+  dental: 'ทันตกรรม', physio: 'กายภาพ', telemedicine: 'การแพทย์ทางไกล', telepharmacy: 'Telepharmacy', 'postal-drug': 'ส่งยาไปรษณีย์',
   'thai-medicine': 'แพทย์แผนไทย', readmit: 'Re-admit', referral: 'ส่งต่อ', 'drug-budget': 'ปริมาณการใช้ยา',
   'stroke-unit': 'Stroke Unit', admin: 'ผู้ดูแลระบบ', feedback: 'แจ้งปัญหา',
 };

@@ -1,4 +1,7 @@
 import { fiscalSeries } from './fiscal-series';
+import { dayValue, rangePersons, rangeTotal } from './daily';
+import { BD, drugQtyInRange, icdName, monthShares, rankItems, rankItemsVec, sumMonths } from './breakdown';
+import { DAILY_UPTO } from './daily-data';
 import { CHINESE_PERSONS, HERB_QTY, THAI_PERSONS, THAI_RIGHTS } from './fiscal-data';
 import type { ClinicOpd, CountBreakdown, DrugItem, PhysioCount, RankedItem, ThaiMedicineReport } from '../types/reports.types';
 
@@ -66,23 +69,31 @@ const HERBS: [string, string, number, number][] = [
 /** ยาแผนปัจจุบัน — หน้าแผนไทยไม่แสดงแล้ว (ในคลินิกแผนไทย/แผนจีนจ่ายเกือบทั้งหมดเป็นยาสมุนไพร) */
 const COMMON: [string, string, number, number][] = [];
 
-const rnd = (min: number, max: number) => Math.round(min + Math.random() * (max - min));
-const jitter = (value: number, pct = 0.1) => Math.max(0, Math.round(value * (1 + (Math.random() * 2 - 1) * pct)));
 
 function iso(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function daysBetween(start: string, end: string) {
-  const ms = new Date(`${end}T00:00:00`).getTime() - new Date(`${start}T00:00:00`).getTime();
-  return Math.max(1, Math.round(ms / 86400000) + 1);
-}
 
-/** แพทย์แผนไทย 1 ครั้ง ≈ 1 คน (ตามข้อมูลจริง คนไม่ค่อยมาซ้ำในวันเดียวกัน) */
-function breakdown(workdays: number): CountBreakdown {
-  const categories = PER_DAY.map(perDay => {
-    const visits = jitter(perDay * workdays, 0.15);
-    return { visits, persons: visits };
+/**
+ * บริการแผนไทยของช่วง — ครั้ง/คนจริงของแผนก 041 (daily-data.ts) แบ่งตามสัดส่วนบริการจริง (PER_DAY)
+ * บริการต่อครั้ง: 2,744 บริการ ÷ 2,416 ครั้ง (12 เดือน) ≈ 1.14 · คนแต่ละบริการ = คนไม่ซ้ำของช่วง × สัดส่วน
+ */
+const SERVICES_PER_VISIT = 2744 / 2416;
+function breakdown(start: string, end: string): CountBreakdown {
+  // บริการแต่ละประเภท = ครั้งจริงของช่วง × บริการต่อครั้งจริงของเดือนที่ทับกับช่วง (health_med_service_operation)
+  const shares = monthShares(start, end);
+  let monthVisits = 0;
+  for (const [m, f] of shares) monthVisits += rangeTotal('thai', `${m}-01`, monthEndOf(m)) * f;
+  const perVisit = CATEGORIES.map(c => (monthVisits ? sumMonths(BD.thaiCat[c], shares) / monthVisits : 0));
+  const fallback = perVisit.every(v => v === 0);
+  const all = PER_DAY.reduce((a, b) => a + b, 0);
+  const visits = rangeTotal('thai', start, end);
+  const persons = rangePersons('thai', start, end);
+  const categories = CATEGORIES.map((_, i) => {
+    const per = fallback ? (PER_DAY[i] / all) * SERVICES_PER_VISIT : perVisit[i];
+    const v = Math.round(visits * per);
+    return { visits: v, persons: Math.min(persons, v, Math.round(persons * per)) };
   });
   const total = categories.reduce((acc, c) => ({ visits: acc.visits + c.visits, persons: acc.persons + c.persons }), { visits: 0, persons: 0 });
   return { total, categories };
@@ -97,59 +108,66 @@ function workdaysBetween(start: string, end: string) {
   return dates;
 }
 
-function rankDiseases(list: [string, string, number][], visits: number): RankedItem[] {
-  return list
-    .map(([code, name, share]) => {
-      const v = Math.max(1, jitter(visits * share, 0.2));
-      return { code, name, visits: v, patients: Math.max(1, Math.min(v, Math.round(v / (1.2 + Math.random() * 0.5)))) };
-    })
-    .sort((a, b) => b.visits - a.visits);
+/** อันดับโรคของช่วง — ยอดจริงรายเดือนต่อรหัส · ชื่อจากรายการเดิม (ICD-10-TM) หรือ icd101 · คน ≈ ครั้ง × อัตราคน/ครั้งของคลินิกในช่วง */
+function rankDiseases(key: 'thai' | 'chinese', named: [string, string, number][], start: string, end: string, personRatio: number): RankedItem[] {
+  const names = new Map(named.map(([code, name]) => [code, name]));
+  const rows: [string, number, number][] = key === 'thai'
+    ? rankItems(BD.thaiDx, start, end).map(([c, n]) => [c, n, n * personRatio])
+    : rankItemsVec(BD.chineseDx, start, end, 2).map(([c, v]) => [c, v[0], v[1]]);
+  return rows.slice(0, 10).map(([code, n, p]) => {
+    const visits = Math.max(1, Math.round(n));
+    const nm = icdName(code);
+    return { code, name: names.get(code) ?? nm.nameTh ?? nm.name, visits, patients: Math.max(1, Math.min(visits, Math.round(p))) };
+  });
 }
+const monthEndOf = (ym: string) => iso(new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0));
 
-/** ผู้ป่วยนอกของคลินิก — perDay = คน/วันทำการโดยประมาณ
+/** ผู้ป่วยนอกของคลินิก (key = ชุดยอดจริงรายวันใน daily-data.ts: thai = แผนก 041, chinese = แผนก 049)
  * สร้างยอดรายวันครั้งเดียว แล้วรวมเป็นช่วงที่เลือก / เดือนนี้ / วันนี้ (ตัวเลขจึงสอดคล้องกันเสมอ) */
-function clinicOpd(start: string, end: string, perDay: number, diseases: [string, string, number][], monthTable: Record<string, number>): ClinicOpd {
+function clinicOpd(start: string, end: string, key: 'thai' | 'chinese', diseases: [string, string, number][], monthTable: Record<string, number>): ClinicOpd {
   const endDate = new Date(`${end}T00:00:00`);
   const monthStart = iso(new Date(endDate.getFullYear(), endDate.getMonth(), 1));
-  const from = start < monthStart ? start : monthStart;
-  const perDate = new Map(workdaysBetween(from, end).map(date => [date, jitter(perDay, 0.35)]));
-  const sumFrom = (since: string) => [...perDate].filter(([date]) => date >= since).reduce((a, [, n]) => a + n, 0);
-
-  const dates = [...perDate.keys()].filter(date => date >= start);
-  const rangePersons = sumFrom(start);
-  const monthPersons = sumFrom(monthStart);
-  const todayPersons = perDate.get(end) ?? 0;
-  // คนเดียวมาหลายครั้งได้ → ครั้ง ≈ คน × 1.1
-  const withVisits = (persons: number): PhysioCount => ({ persons, visits: Math.round(persons * 1.1) });
+  // คนไม่ซ้ำ: ช่วงที่ตรงกับ 1 เดือนเต็ม (หรือเดือนปัจจุบันนับถึงวันที่ถ่ายข้อมูล) ใช้ยอดจริงรายเดือน (fiscal-data.ts) · ช่วงอื่นประมาณจากยอดรายวัน
+  const exactMonth = (from: string, to: string) => {
+    if (!from.endsWith('-01') || from.slice(0, 7) !== to.slice(0, 7)) return undefined;
+    const [y, m] = from.split('-').map(Number);
+    const last = iso(new Date(y, m, 0));
+    const covered = to >= last || (from.slice(0, 7) === DAILY_UPTO.slice(0, 7) && to >= DAILY_UPTO);
+    return covered ? monthTable[from.slice(0, 7)] : undefined;
+  };
+  const count = (from: string, to: string): PhysioCount => ({ persons: exactMonth(from, to) ?? rangePersons(key, from, to), visits: rangeTotal(key, from, to) });
+  const dates = workdaysBetween(start, end);
+  const range = count(start, end);
 
   const fyStartYear = endDate.getMonth() >= 9 ? endDate.getFullYear() : endDate.getFullYear() - 1;
   // คนไม่ซ้ำรายเดือนจริง (เดือนของวันสิ้นสุดนับถึงวันนั้น)
   const monthly = fiscalSeries(fyStartYear, monthTable, end, 0.05);
   return {
-    range: withVisits(rangePersons),
-    month: { ...withVisits(monthPersons), start: monthStart, end: iso(new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0)) },
-    day: { ...withVisits(todayPersons), date: end },
-    avgPerDay: dates.length ? Math.round((rangePersons / dates.length) * 10) / 10 : 0,
-    daily: { dates, persons: dates.map(date => perDate.get(date) ?? 0) },
+    range,
+    month: { ...count(monthStart, end), start: monthStart, end: iso(new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0)) },
+    day: { ...count(end, end), date: end },
+    // คนต่อวันทำการ (คนในแต่ละวันรวมกัน ÷ วันทำการ)
+    avgPerDay: dates.length ? Math.round((rangeTotal(key, start, end, 1) / dates.length) * 10) / 10 : 0,
+    daily: { dates, persons: dates.map(date => Math.round(dayValue(key, date, 1))) },
     monthly: { labels: MONTHS, persons: monthly },
-    topDiseases: rankDiseases(diseases, Math.round(rangePersons * 1.1)),
+    topDiseases: rankDiseases(key, diseases, start, end, range.visits ? range.persons / range.visits : 1),
   };
 }
 
-function drugList(list: [string, string, number, number][], scale: number): DrugItem[] {
+/** ยาสมุนไพรของช่วง — ปริมาณจริงรายเดือนต่อรายการ (drug-history.ts) ตามสัดส่วนวันที่ทับกับช่วง × ราคาขาย */
+function drugList(list: [string, string, number, number][], start: string, end: string): DrugItem[] {
   return list
-    .map(([code, name, qty, price]) => {
-      const q = Math.max(1, jitter(qty * scale, 0.05));
+    .map(([code, name, , price]) => {
+      const q = Math.round(drugQtyInRange(code, start, end) ?? 0);
       return { code, name, qty: q, value: Math.round(q * price * 100) / 100 };
     })
+    .filter(d => d.qty > 0)
     .sort((a, b) => b.qty - a.qty);
 }
 
 export function generateThaiMedicineReport(start: string, end: string): ThaiMedicineReport {
   const endDate = new Date(`${end}T00:00:00`);
   const fyStartYear = endDate.getMonth() >= 9 ? endDate.getFullYear() : endDate.getFullYear() - 1;
-  // ตัวอย่างหน้าจอคือทั้งปีงบประมาณ — อันดับยาปรับตามช่วงที่เลือก
-  const scale = daysBetween(start, end) / 357;
 
   // เดือนหลังวันสิ้นสุดยังไม่เกิดขึ้น
   // ยาสมุนไพรทั้ง รพ. รายเดือนจริง (~5,500–9,000 ชิ้น/เดือน) · เดือนที่ยังไม่ถึง = 0
@@ -164,22 +182,22 @@ export function generateThaiMedicineReport(start: string, end: string): ThaiMedi
     end,
     fiscalYear: fyStartYear + 1 + 543,
     categories: CATEGORIES,
-    range: breakdown(daysBetween(start, end) * 0.7),
+    range: breakdown(start, end),
     month: {
-      ...breakdown(endDate.getDate() * 0.7),
+      ...breakdown(iso(new Date(endDate.getFullYear(), endDate.getMonth(), 1)), end),
       start: iso(new Date(endDate.getFullYear(), endDate.getMonth(), 1)),
       end: iso(new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0)),
     },
-    day: { ...breakdown(rnd(80, 120) / 100), date: end },
+    day: { ...breakdown(end, end), date: end },
     drugs: {
       // มูลค่าเฉลี่ยจริง ~3.68 บาท/ชิ้น
       herb: { qty: herbQty, value: Math.round(herbQty * 3.68 * 100) / 100 },
       common: { qty: commonQty, value: Math.round(commonQty * 2.26 * 100) / 100 },
     },
     monthlyDrugs: { labels: MONTHS, herb: herbMonthly, common: commonMonthly },
-    topDrugs: { herb: drugList(HERBS, scale), common: drugList(COMMON, scale) },
+    topDrugs: { herb: drugList(HERBS, start, end), common: drugList(COMMON, start, end) },
     // แผนก 041 แพทย์แผนไทย ~2,426 ครั้ง/ปี (~10 คน/วันทำการ)
-    thaiOpd: clinicOpd(start, end, 10.1, THAI_DISEASES, THAI_PERSONS),
+    thaiOpd: clinicOpd(start, end, 'thai', THAI_DISEASES, THAI_PERSONS),
     rightsMonthly: {
       rights: RIGHTS,
       labels: MONTHS,
@@ -188,7 +206,7 @@ export function generateThaiMedicineReport(start: string, end: string): ThaiMedi
     },
     chinese: (() => {
       // แผนก 049 แพทย์แผนจีน ~2,030 ครั้ง/ปี (~8.5 คน/วันทำการ)
-      const opd = clinicOpd(start, end, 8.5, CHINESE_DISEASES, CHINESE_PERSONS);
+      const opd = clinicOpd(start, end, 'chinese', CHINESE_DISEASES, CHINESE_PERSONS);
       // IMC = ผู้ป่วยแผนจีนที่วินิจฉัยหลักเป็นโรคหลอดเลือดสมอง/อัมพาต/บาดเจ็บสมอง-ไขสันหลัง (I6x, G81, G83, S06, S14, S24, S34)
       // จริง 12 เดือน: 246 / 2,030 ครั้ง (12.1%) · 18 / 228 คน (7.9%)
       const share = (c: PhysioCount): PhysioCount => ({ visits: Math.round(c.visits * 0.121), persons: Math.round(c.persons * 0.079) });

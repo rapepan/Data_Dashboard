@@ -1,5 +1,7 @@
 import { fiscalSeries } from './fiscal-series';
-import { PHYSIO_APPT_CAME, PHYSIO_APPT_NOSHOW, PHYSIO_CLAIM, PHYSIO_IPD, PHYSIO_OPD, PHYSIO_SELFPAY, PHYSIO_WALKIN } from './fiscal-data';
+import { PHYSIO_APPT_CAME, PHYSIO_APPT_NOSHOW, PHYSIO_CLAIM, PHYSIO_SELFPAY, PHYSIO_WALKIN } from './fiscal-data';
+import { dates, fiscalMonthly, rangePersons, rangeTotal } from './daily';
+import { BD, icdName, monthShares, rankItems, rankItemsVec, sumMonths } from './breakdown';
 import type { PhysioAppointments, PhysioBreakdown, PhysioCount, PhysioMoney, PhysioReport, PhysioRevenue, PhysioRightRevenue, RankedItem } from '../types/reports.types';
 
 /**
@@ -13,11 +15,7 @@ import type { PhysioAppointments, PhysioBreakdown, PhysioCount, PhysioMoney, Phy
 const CATEGORIES = ['รักษา', 'รักษา + ฟื้นฟูสมรรถภาพ', 'ฟื้นฟูสมรรถภาพ', 'ส่งเสริมและป้องกัน', 'ไม่ระบุ'];
 /** สัดส่วนจำนวนครั้งผู้ป่วยนอกตามกลุ่ม */
 const VISIT_SHARE = [0.853, 0.075, 0.043, 0.006, 0.023];
-/** ผู้ป่วยนอก physic_main: 4,752 ครั้ง / 706 คน (6.7 ครั้ง/คน) ใน 240 วันทำการ — อิง HOSxP รพ.บางเสาธง (ตรวจซ้ำ 05/10/2569, ย้อนหลัง 12 เดือน) */
-const VISITS_PER_DAY = 20;
-const OPD_VISITS_PER_PERSON = 6.8;
 /** ผู้ป่วยใน physic_main_ipd: 429 ครั้ง / 116 คน (3.7 ครั้ง/คน) ใน 240 วันทำการ — ไม่ได้บันทึกกลุ่มการรักษา จึงอยู่กลุ่ม "ไม่ระบุ" */
-const IPD_PER_DAY = 1.8;
 const IPD_VISITS_PER_PERSON = 3.7;
 const UNSPECIFIED = CATEGORIES.indexOf('ไม่ระบุ');
 /** กลุ่มสิทธิหลัก (vn_stat.pcode): AG บัตรผู้สูงอายุ · UC 30 บาท · A2 เบิกต้นสังกัด */
@@ -31,86 +29,53 @@ function iso(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function daysBetween(start: string, end: string) {
-  const ms = new Date(`${end}T00:00:00`).getTime() - new Date(`${start}T00:00:00`).getTime();
-  return Math.max(1, Math.round(ms / 86400000) + 1);
-}
 
 function sum(counts: PhysioCount[]): PhysioCount {
   return counts.reduce((acc, c) => ({ persons: acc.persons + c.persons, visits: acc.visits + c.visits }), { persons: 0, visits: 0 });
 }
 
-/** days = จำนวนวันทำการโดยประมาณ, onlyIpd = เอาเฉพาะส่วนผู้ป่วยใน */
-function breakdown(days: number, onlyIpd = false): PhysioBreakdown {
-  // ช่วงสั้น (เช่น 1 วัน) คนแทบไม่ซ้ำ — ช่วงยาวคนเดิมมาหลายครั้งตามค่าเฉลี่ยจริง
-  const persons = (visits: number, perPerson: number) => (visits ? Math.max(1, Math.round(visits / (days < 3 ? 1 : perPerson))) : 0);
-  const ipdVisits = jitter(IPD_PER_DAY * days);
-  const ipd = { visits: ipdVisits, persons: persons(ipdVisits, IPD_VISITS_PER_PERSON) };
-  const opdCats = CATEGORIES.map((_, i) => {
-    const visits = onlyIpd ? 0 : jitter(VISITS_PER_DAY * days * VISIT_SHARE[i]);
-    return { visits, persons: persons(visits, OPD_VISITS_PER_PERSON) };
-  });
+/**
+ * ยอดของช่วง start–end จากยอดจริงรายวัน (daily-data.ts: physic_main / physic_main_ipd) · onlyIpd = เอาเฉพาะส่วนผู้ป่วยใน
+ * แยกกลุ่มการรักษาตามสัดส่วนจริง (VISIT_SHARE) · คนของผู้ป่วยในช่วงหลายวัน = ครั้ง ÷ ครั้งต่อคนจริง
+ */
+function breakdown(start: string, end: string, onlyIpd = false): PhysioBreakdown {
+  const days = dates(start, end).length;
+  const ipdVisits = rangeTotal('physioIpd', start, end);
+  const ipdPersons = days < 3 ? rangeTotal('physioIpd', start, end, 1) : Math.round(ipdVisits / IPD_VISITS_PER_PERSON);
+  const ipd = { visits: ipdVisits, persons: ipdVisits ? Math.max(1, ipdPersons) : 0 };
+  const opdVisits = onlyIpd ? 0 : rangeTotal('physioOpd', start, end);
+  const opdPersons = onlyIpd ? 0 : rangePersons('physioOpd', start, end);
+  // แยกกลุ่ม: ปัดเศษแล้วใส่ส่วนต่างไว้กลุ่มใหญ่สุด ผลรวมจะตรงยอดจริง
+  const share = categoryShare(start, end);
+  const split = (total: number) => {
+    const parts = share.map(sh => Math.round(total * sh));
+    parts[0] += total - parts.reduce((a, b) => a + b, 0);
+    return parts;
+  };
+  const vs = split(opdVisits);
+  const ps = split(opdPersons);
+  const opdCats = CATEGORIES.map((_, i) => ({ visits: vs[i], persons: ps[i] }));
   const all = opdCats.map((c, i) => (i === UNSPECIFIED ? { visits: c.visits + ipd.visits, persons: c.persons + ipd.persons } : c));
   const total = sum(all);
   return { total, categories: all, ipd, opd: { visits: total.visits - ipd.visits, persons: total.persons - ipd.persons } };
 }
 
-/** อันดับโรค OPD (vn_stat.pdx ของ visit กายภาพ) — [รหัส, ชื่อ (ไทยถ้ามี), ครั้ง/ปี, คน/ปี] · ย้อนหลัง 12 เดือน ถึง 05/10/2569 */
-const OPD_DISEASES: [string, string, number, number][] = [
-  ['I64', 'โรคอัมพาตฉับพลัน ไม่ระบุว่าเกิดจากเลือดออกหรือเนื้อสมองตายเพราะขาดเลือด', 380, 51],
-  ['M4796', 'บรเวณเอว', 357, 50],
-  ['M170', 'ข้อเข่าเสื่อมปฐมภูมิ  ทั้งสองข้าง', 328, 49],
-  ['M179', 'ข้อเข่าเสื่อม   ที่มิได้ระบุรายละเอียด', 267, 39],
-  ['M750', 'ถุงหุ้มข้อไหล่อีกเสบยึดติด', 234, 47],
-  ['M6260', 'Multiple sites', 177, 33],
-  ['M4722', 'บริเวณคอ', 173, 26],
-  ['I694', 'ผลที่ตามของโรคลมอัมพาต ไม่ระบุว่าเกิดจากเลือดออกหรือเนื้อสมองตายเพราะขาดเลือด', 171, 27],
-  ['M4792', 'บริเวณคอ', 163, 34],
-  ['M751', 'กลุ่มอาการโรเตเตอร์ คัฟฟ์', 132, 26],
-  ['G819', 'อัมพาตครึ่งซีก  ไม่ระบุรายละเอียด', 128, 24],
-  ['M6261', 'Shoulder region', 123, 32],
-];
+/** สัดส่วนกลุ่มการรักษาของช่วง (ยอดจริงรายเดือน physic_main.type_text) — ไม่มีข้อมูลใช้ VISIT_SHARE */
+function categoryShare(start: string, end: string): number[] {
+  const shares = monthShares(start, end);
+  const v = CATEGORIES.map(c => sumMonths(BD.physioCat[c], shares));
+  const sum = v.reduce((a, b) => a + b, 0);
+  return sum ? v.map(x => x / sum) : VISIT_SHARE;
+}
 
-/** อันดับโรค IPD (physic_main_ipd + an_stat.pdx) — [รหัส, ชื่อ (ไทยถ้ามี), ครั้ง/ปี, คน/ปี] · ย้อนหลัง 12 เดือน ถึง 05/10/2569 */
-const IPD_DISEASES: [string, string, number, number][] = [
-  ['I64', 'โรคอัมพาตฉับพลัน ไม่ระบุว่าเกิดจากเลือดออกหรือเนื้อสมองตายเพราะขาดเลือด', 99, 19],
-  ['I639', 'เนื้อสมองตายเพราะขาดเลือด ไม่ระบุรายละเอียด', 92, 39],
-  ['S1290', 'Fracture of neck, part unspecified: closed', 55, 1],
-  ['J189', 'ปอดบวม', 21, 6],
-  ['K750', 'โรคฝีในตับ', 11, 1],
-  ['C61', 'มะเร็งต่อมลูกหมาก', 10, 2],
-  ['I610', 'Intracerebral haemorrhage in hemisphere, subcortical', 10, 3],
-  ['A86', 'สมองอักเสบจาดเชื้อไวรัส    ที่มิได้ระบุรายละเอียด', 9, 1],
-  ['G459', 'โรคเลือดไปเลี้ยงสมองน้อยชั่วคราว  ที่มิได้ระบุรายละเอียด', 9, 6],
-  ['I500', 'หัวใจล้มเหลวแบบมีน้ำคั่ง', 8, 2],
-  ['I269', 'Pulmonary embolism without mintion of acute cor pulmonale', 7, 1],
-  ['J690', 'โรคปอดอักเสบจากการสำลัก', 6, 1],
-];
-
-/** หัตถการ (physic_list + physic_items) — [รหัสรายการ, ชื่อ, ครั้ง/ปี] · ย้อนหลัง 12 เดือน ถึง 05/10/2569 */
-const PROCEDURES: [string, string, number][] = [
-  ['10', 'Hot pack', 2843],
-  ['102', 'Peripheral magnetic stimulation (PMS)', 2509],
-  ['2', 'US', 1879],
-  ['42', 'Strengthening / Weight / Endurance exs.', 1308],
-  ['96', 'Vertebral Mobilization', 1233],
-  ['13', 'Pelvic Traction (การดึงหลัง)', 906],
-  ['21', 'Ambulation Training (ฝึกนั่ง, ยืน, เดินและเคลื่อนย้ายตัว)', 823],
-  ['65', 'Combined US and ES', 724],
-  ['26', 'Home program (การแนะนำการปฏิบัติตัว, การใช้อุปกรณ์)', 676],
-  ['93', 'Balance training', 650],
-  ['97', 'Peripheral Mobilization', 640],
-  ['101', 'การตรวจประเมินและวางแผนการรักษาทางกายภาพบำบัด', 506],
-];
-
-function ranked(list: [string, string, number, number][], scale: number): RankedItem[] {
-  return list
-    .map(([code, name, visits, patients]) => {
-      const v = Math.max(1, jitter(visits * scale, 0.06));
-      // จำนวนคนต้องไม่เกินจำนวนครั้ง
-      return { code, name, visits: v, patients: Math.min(v, Math.max(1, jitter(patients * scale, 0.06))) };
-    })
-    .sort((a, b) => b.visits - a.visits);
+/** อันดับโรคของช่วง: ยอดจริงรายเดือนต่อรหัส (ครั้ง + คนไม่ซ้ำในเดือน) · ชื่อไทยถ้ามี */
+function ranked(set: Record<string, Record<string, number[]>>, start: string, end: string, limit = 12): RankedItem[] {
+  return rankItemsVec(set, start, end, 2).slice(0, limit).map(([code, [n, p]]) => {
+    const visits = Math.max(1, Math.round(n));
+    const nm = icdName(code);
+    // จำนวนคนต้องไม่เกินจำนวนครั้ง
+    return { code, name: nm.nameTh ?? nm.name, visits, patients: Math.min(visits, Math.max(1, Math.round(p))) };
+  });
 }
 
 /* ---------------- ค่ารักษา (เบิกได้ / เก็บเงิน) — ยอดรวมจาก HOSxP รพ.บางเสาธง ปีงบ 2569 (ตรวจ 06/10/2569) ---------------- */
@@ -169,10 +134,12 @@ const IPD_RIGHTS: [string, string, number, number][] = [
   ['A2', 'A2 : สิทธิข้าราชการ อปท. # เบิกจ่ายตรง', 1, 670],
 ];
 
-function rightsFor(list: [string, string, number, number][], scale: number): PhysioRightRevenue[] {
+/** ค่ารักษาแยกสิทธิ — สัดส่วนครั้งตามสิทธิจริง (12 เดือน) ปรับให้รวมเท่าครั้งจริงของช่วง (total) · ค่าต่อครั้งตามจริง */
+function rightsFor(list: [string, string, number, number][], total: number): PhysioRightRevenue[] {
+  const all = list.reduce((a, [, , v]) => a + v, 0) || 1;
   return list
     .map(([code, name, visits, amount]) => {
-      const v = Math.round(visits * scale * (1 + (Math.random() * 2 - 1) * 0.06));
+      const v = Math.round((visits / all) * total);
       // ค่าต่อครั้งคงที่ตามจริง (ปัดหลักสิบเหมือนอัตราค่าบริการ)
       return { code, name, group: SELF_PAY_CODES.has(code) ? 'selfpay' as const : 'claim' as const, visits: v, amount: Math.round((v * amount) / visits / 10) * 10 };
     })
@@ -184,9 +151,10 @@ function totalOf(rights: PhysioRightRevenue[], group: 'claim' | 'selfpay'): Phys
   return rights.filter(r => r.group === group).reduce((a, r) => ({ visits: a.visits + r.visits, amount: a.amount + r.amount }), { visits: 0, amount: 0 });
 }
 
-function revenue(scale: number, fyStartYear: number, end: string): PhysioRevenue {
-  const opd = rightsFor(OPD_RIGHTS, scale);
-  const ipd = rightsFor(IPD_RIGHTS, scale);
+function revenue(start: string, fyStartYear: number, end: string): PhysioRevenue {
+  // ครั้งจริงของช่วง (daily-data.ts: physic_main / physic_main_ipd)
+  const opd = rightsFor(OPD_RIGHTS, rangeTotal('physioOpd', start, end));
+  const ipd = rightsFor(IPD_RIGHTS, rangeTotal('physioIpd', start, end));
   return {
     opd: { claim: totalOf(opd, 'claim'), selfpay: totalOf(opd, 'selfpay'), rights: opd },
     ipd: { claim: totalOf(ipd, 'claim'), selfpay: totalOf(ipd, 'selfpay'), rights: ipd },
@@ -196,23 +164,23 @@ function revenue(scale: number, fyStartYear: number, end: string): PhysioRevenue
 
 /* ---------------- นัดหมาย (คลินิกกายภาพ oapp.clinic 042) — จำนวนครั้งเท่านั้น ปีงบ 2569 ---------------- */
 
-/** ต่อวัน (ปีงบ 2569) */
-const APPT_PER_DAY = { came: 2713 / 365, noShow: 1068 / 365, walkIn: 2148 / 365 };
 /** นัดตามวัน จ.–ศ. ย้อนหลัง 12 เดือน */
 const APPT_WEEKDAY = [804, 865, 595, 850, 702];
 /** นัดล่วงหน้า 30 วัน ณ 05/10/2569 */
 const APPT_UPCOMING_30 = 202;
 
-function appointments(rangeDays: number, endIsToday: boolean, fyStartYear: number, end: string): PhysioAppointments {
+function appointments(start: string, endIsToday: boolean, fyStartYear: number, end: string): PhysioAppointments {
   const pendingToday = endIsToday ? rnd(3, 9) : 0;
-  const came = jitter(APPT_PER_DAY.came * rangeDays, 0.06);
-  const noShow = jitter(APPT_PER_DAY.noShow * rangeDays, 0.06);
+  // มาตามนัด / ไม่มาตามนัด / walk-in ของช่วง = ยอดจริงรายเดือน (fiscal-data.ts) ตามสัดส่วนวันที่ทับกับช่วง
+  const shares = monthShares(start, end);
+  const came = Math.round(sumMonths(PHYSIO_APPT_CAME, shares));
+  const noShow = Math.round(sumMonths(PHYSIO_APPT_NOSHOW, shares));
   return {
     total: came + noShow + pendingToday,
     came,
     noShow,
     pendingToday,
-    walkIn: jitter(APPT_PER_DAY.walkIn * rangeDays, 0.06),
+    walkIn: Math.round(sumMonths(PHYSIO_WALKIN, shares)),
     upcoming30: jitter(APPT_UPCOMING_30, 0.05),
     monthly: {
       labels: MONTHS,
@@ -220,7 +188,7 @@ function appointments(rangeDays: number, endIsToday: boolean, fyStartYear: numbe
       noShow: fiscalSeries(fyStartYear, PHYSIO_APPT_NOSHOW, end),
       walkIn: fiscalSeries(fyStartYear, PHYSIO_WALKIN, end),
     },
-    weekday: { labels: ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์'], values: APPT_WEEKDAY.map(v => jitter(v, 0.04)) },
+    weekday: { labels: ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์'], values: [...APPT_WEEKDAY] },
   };
 }
 
@@ -229,13 +197,10 @@ export function generatePhysioReport(start: string, end: string): PhysioReport {
   const monthStart = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
   const monthEnd = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0);
   const fyStartYear = endDate.getMonth() >= 9 ? endDate.getFullYear() : endDate.getFullYear() - 1;
-  const rangeDays = daysBetween(start, end);
-  // ตัวเลขอันดับโรค/หัตถการเป็นยอดทั้งปี — ปรับตามช่วงที่เลือก
-  const scale = rangeDays / 365;
 
   // ครั้งรายเดือนตามปีงบที่ดู (physic_main / physic_main_ipd) — เดือนที่ยังไม่ถึง = 0
-  const opdMonthly = fiscalSeries(fyStartYear, PHYSIO_OPD, end, 0.05);
-  const ipdMonthly = fiscalSeries(fyStartYear, PHYSIO_IPD, end, 0.05);
+  const opdMonthly = fiscalMonthly('physioOpd', end);
+  const ipdMonthly = fiscalMonthly('physioIpd', end);
 
   // สัดส่วนสิทธิหลัก (vn_stat.pcode / an_stat.pcode) ย้อนหลัง 12 เดือน: OPD AG 44.6% · UC 28.2% · A2 12.8% · อื่น ๆ 14.5%
   //   IPD AG 44.5% · UC 17.2% · A2 32.6% · อื่น ๆ 5.6% (ผู้ป่วยในสิทธิ A2 สัดส่วนสูงกว่าผู้ป่วยนอกมาก)
@@ -255,7 +220,8 @@ export function generatePhysioReport(start: string, end: string): PhysioReport {
     };
   };
 
-  const range = breakdown(rangeDays * 0.7);
+  const range = breakdown(start, end);
+  const mStart = iso(monthStart);
   const fiscalOpd = opdMonthly.reduce((a, b) => a + b, 0);
   const fiscalIpd = ipdMonthly.reduce((a, b) => a + b, 0);
 
@@ -265,12 +231,12 @@ export function generatePhysioReport(start: string, end: string): PhysioReport {
     fiscalYear: fyStartYear + 1 + 543,
     categories: CATEGORIES,
     range,
-    month: { ...breakdown(endDate.getDate() * 0.7), start: iso(monthStart), end: iso(monthEnd) },
-    day: { ...breakdown(rnd(80, 100) / 100), date: end },
+    month: { ...breakdown(mStart, end), start: mStart, end: iso(monthEnd) },
+    day: { ...breakdown(end, end), date: end },
     ipdOnly: {
-      range: breakdown(rangeDays * 0.7, true),
-      month: breakdown(endDate.getDate() * 0.7, true),
-      day: breakdown(rnd(80, 100) / 100, true),
+      range: breakdown(start, end, true),
+      month: breakdown(mStart, end, true),
+      day: breakdown(end, end, true),
     },
     // หอที่เปิดใช้จริง: Ward 2 (หอหลัก) · Home Ward · SEMI ICU
     // หอผู้ป่วยจริง (an_stat.ward): Ward 2 427 ครั้ง · Home Ward 2 ครั้ง
@@ -279,12 +245,13 @@ export function generatePhysioReport(start: string, end: string): PhysioReport {
       { label: 'Home Ward', value: Math.round(fiscalIpd * 0.005) },
     ],
     monthly: { labels: MONTHS, ipd: ipdMonthly, opd: opdMonthly },
-    topDiseases: { opd: ranked(OPD_DISEASES, scale), ipd: ranked(IPD_DISEASES, scale) },
-    topProcedures: PROCEDURES.map(([code, name, visits]) => ({ code, name, visits: jitter(visits * scale, 0.05) })).sort((a, b) => b.visits - a.visits),
+    // อันดับโรค / หัตถการของช่วง — ยอดจริงรายเดือน (vn_stat.pdx / an_stat.pdx / physic_list)
+    topDiseases: { opd: ranked(BD.physioOpdDx, start, end), ipd: ranked(BD.physioIpdDx, start, end) },
+    topProcedures: rankItems(BD.physioProc, start, end).slice(0, 15).map(([key, v]) => ({ code: key.slice(0, key.indexOf('|')), name: key.slice(key.indexOf('|') + 1), visits: Math.round(v) })),
     rights: RIGHTS,
     byRight: { opd: byTime(fiscalOpd, 'opd'), ipd: byTime(fiscalIpd, 'ipd') },
     monthlyByRight: { opd: monthlyByTime(opdMonthly, 'opd'), ipd: monthlyByTime(ipdMonthly, 'ipd') },
-    revenue: revenue(scale, fyStartYear, end),
-    appointments: appointments(rangeDays, end === iso(new Date()), fyStartYear, end),
+    revenue: revenue(start, fyStartYear, end),
+    appointments: appointments(start, end === iso(new Date()), fyStartYear, end),
   };
 }

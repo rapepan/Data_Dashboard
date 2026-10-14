@@ -1146,6 +1146,15 @@ button.sidebar-footer.sidebar-login {
 .rx-summary .rx-main > b { color: var(--indigo); }
 @media (max-width: 900px) { .rx-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
+/* หน้าปริมาณการใช้ยา: หัวแถวกลุ่มยา + แถบยอดรวม */
+.drug-group-head { display: flex; align-items: baseline; gap: .45rem; margin: .4rem 0 .6rem; font-size: 1rem; font-weight: 700; color: var(--indigo); }
+.drug-group-head.thai { color: var(--plum); margin-top: 1rem; }
+.drug-group-head small { font-size: .78rem; font-weight: 400; color: var(--text-muted); }
+.drug-total-strip { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem 1.4rem; margin: .9rem 0 1rem; padding: .7rem 1rem; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2, #f8fafc); font-size: .85rem; color: var(--text-muted); }
+.drug-total-strip > span:first-child { font-weight: 600; color: var(--text); margin-right: auto; }
+.drug-total-strip b { color: var(--text); font-variant-numeric: tabular-nums; }
+.drug-total-strip b.neg { color: var(--rose); }
+
 /* ป้าย % เทียบช่วงก่อน (ChangeBadge) บนการ์ดสรุป */
 .card-change { display: block; margin-top: .15rem; line-height: 1.3; }
 .kpi-card .card-change { margin: -.85rem 0 .75rem; }

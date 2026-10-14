@@ -460,3 +460,24 @@ export interface PostalDrugReport {
   districts: LabelValue[];
   topDiseases: { code: string; name: string; visits: number }[];
 }
+
+/* ------------------------------- Telepharmacy ------------------------------- */
+/** การจ่ายยาให้ผู้ป่วยที่รับบริการทางไกล (visit แผนก 055 ที่มีรายการยา) — ระยะแรกของหน้า Telepharmacy */
+export interface TelepharmacyReport {
+  start: string;
+  end: string;
+  fiscalYear: number;
+  /** false = ผู้เยี่ยมชม — ทุน / ขายเป็น 0 */
+  showMoney: boolean;
+  /** ช่วงที่เลือก · teleVisits = visit ทางไกลทั้งหมด (ตัวหารของ % ที่ได้รับยา) · change = % เทียบช่วงก่อน (ครั้ง) */
+  range: { visits: number; persons: number; items: number; qty: number; cost: number; sale: number; teleVisits: number; change?: number };
+  month: { visits: number; persons: number; start: string; end: string };
+  day: { date: string; visits: number };
+  fiscal: { visits: number; sale: number };
+  /** ปีงบ (ต.ค.–ก.ย.): ครั้งที่ได้รับยา / visit ทางไกลทั้งหมด / ทุน / ขาย */
+  monthly: { labels: string[]; withDrug: number[]; teleVisits: number[]; cost: number[]; sale: number[] };
+  /** อันดับยาตามมูลค่าขาย (มีทุนด้วย) */
+  topDrugs: DrugItem[];
+  /** สิทธิการรักษา (ครั้ง) */
+  rights: LabelValue[];
+}

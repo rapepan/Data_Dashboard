@@ -11,6 +11,7 @@ import { icd10Routes } from './icd10.routes';
 import { dentalRoutes } from './dental.routes';
 import { physioRoutes } from './physio.routes';
 import { telemedicineRoutes } from './telemedicine.routes';
+import { telepharmacyRoutes } from './telepharmacy.routes';
 import { postalDrugRoutes } from './postal-drug.routes';
 import { thaiMedicineRoutes } from './thai-medicine.routes';
 import { readmitRoutes } from './readmit.routes';
@@ -118,6 +119,8 @@ export async function registerRoutes(fastify: FastifyInstance) {
     await app.register(guarded('dental', dentalRoutes));
     await app.register(guarded('physio', physioRoutes));
     await app.register(guarded('tele', telemedicineRoutes));
+    // Telepharmacy อยู่ใต้เมนูการแพทย์ทางไกล — สิทธิ์เดียวกับ Telemedicine
+    await app.register(guarded('tele', telepharmacyRoutes));
     await app.register(guarded('postal', postalDrugRoutes));
     await app.register(guarded('thaimed', thaiMedicineRoutes));
     await app.register(guarded('readmit', readmitRoutes));

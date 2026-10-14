@@ -1,6 +1,6 @@
+import { BD, hourly as hourlyOf, rankItems, scaleTo } from './breakdown';
+import { dayValue, fiscalMonthly, monthStart, rangeTotal } from './daily';
 import type { TelemedicineReport } from '../types/reports.types';
-import { fiscalSeries } from './fiscal-series';
-import { TELE_VISITS } from './fiscal-data';
 
 /**
  * ข้อมูลจำลองหน้าการแพทย์ทางไกล — ใช้ระหว่างยังไม่ดึงจาก HOSxP
@@ -11,11 +11,7 @@ const MONTHS = ['ต.ค.', 'พ.ย.', 'ธ.ค.', 'ม.ค.', 'ก.พ.', 'ม
  * อิง HOSxP รพ.บางเสาธง (ตรวจเมื่อ 30/09/2569, ย้อนหลัง 12 เดือน) — visit แผนก 055 (Telehealth / Telemedicine)
  * ครั้งรายเดือนจริง (fiscal-data.ts): ใช้น้อยช่วงต้นปีงบ 2569 แล้วเพิ่มขึ้นมากตั้งแต่ มิ.ย. (สูงสุด ส.ค. 237 ครั้ง) · ต.ค. 2569 ~27 ครั้งใน 5 วัน
  */
-/** คลินิกของนัดที่ผูกกับ visit (oapp.visit_vn → clinic) 12 เดือน: ส่วนใหญ่ไม่ได้ผูกนัดคลินิก 397 / 489 ครั้ง */
-const CLINICS: [string, number][] = [['ไม่ระบุคลินิก', 397 / 489], ['Telemedicine', 53 / 489], ['ตรวจโรคทั่วไป', 20 / 489], ['โรคความดัน(HT)', 9 / 489], ['โรคไขมันในเลือดสูง', 4 / 489], ['อื่น ๆ', 6 / 489]];
 
-const rnd = (min: number, max: number) => Math.round(min + Math.random() * (max - min));
-const jitter = (value: number, pct = 0.1) => Math.max(0, Math.round(value * (1 + (Math.random() * 2 - 1) * pct)));
 
 function workdaysBetween(start: string, end: string) {
   let count = 0;
@@ -28,25 +24,25 @@ function workdaysBetween(start: string, end: string) {
 export function generateTelemedicineReport(start: string, end: string): TelemedicineReport {
   const endDate = new Date(`${end}T00:00:00`);
   const fyStartYear = endDate.getMonth() >= 9 ? endDate.getFullYear() : endDate.getFullYear() - 1;
-  // เดือนในปีงบประมาณ (ต.ค. = 0) ของวันสิ้นสุด — เดือนหลังจากนั้นยังไม่เกิดขึ้น
-  const currentFyMonth = (endDate.getMonth() + 3) % 12;
-  // ยอดจริงรายเดือน · เดือนของวันสิ้นสุดนับถึงวันนั้น · เดือนที่ยังไม่ถึง = 0
-  const monthly = fiscalSeries(fyStartYear, TELE_VISITS, end, 0.08);
-
+  // ยอดจริงรายวัน (daily-data.ts · visit แผนก 055) — ช่วงที่เลือก / เดือนนี้ / วันนี้ / รายเดือนของปีงบ
+  const monthly = fiscalMonthly('tele', end);
   const workdays = workdaysBetween(start, end);
-  const perDay = monthly[currentFyMonth] / Math.max(1, workdaysBetween(`${end.slice(0, 8)}01`, end));
-  const rangeTotal = Math.round(perDay * workdays);
-  const dayTotal = endDate.getDay() === 0 || endDate.getDay() === 6 ? 0 : rnd(Math.floor(perDay * 0.5), Math.ceil(perDay * 1.6));
-  // มาจากนัด (ผูกกับ oapp.visit_vn) 90 / 488 ครั้ง (18%) ใน 12 เดือน
-  const fromAppointment = Math.round(dayTotal * 0.18);
+  const rangeSum = rangeTotal('tele', start, end);
+  const dayTotal = Math.round(dayValue('tele', end));
+  // มาจากนัด = visit ที่ผูกกับคลินิกนัด (oapp.visit_vn) — สัดส่วนจริงของเดือนนั้น
+  const clinicMonth = rankItems(BD.teleClinic, end, end);
+  const clinicSum = clinicMonth.reduce((a, [, v]) => a + v, 0);
+  const apptShare = clinicSum ? clinicMonth.filter(([k]) => k !== 'ไม่ระบุคลินิก').reduce((a, [, v]) => a + v, 0) / clinicSum : 0.18;
+  const fromAppointment = Math.round(dayTotal * apptShare);
 
-  // รายชั่วโมงจริง: ช่วงบ่าย 13-14 น. มากที่สุด
+  // รายชั่วโมงจริงของเดือนนั้น (ovst.vsttime แผนก 055) — ไม่มีข้อมูลใช้รูปแบบเดิม (บ่าย 13–14 น. มากสุด)
   const HOURLY = [0, 0, 0, 0, 0, 0, 6, 0, 16, 44, 29, 71, 66, 78, 146, 29, 0, 0, 0, 0, 0, 0, 0, 0];
-  const hourlyShape = HOURLY;
+  const monthHours = hourlyOf(BD.teleHour, end, end);
+  const hourlyShape = monthHours.some(v => v > 0) ? monthHours : HOURLY;
   const shapeSum = hourlyShape.reduce((a, b) => a + b, 0);
   const hourly = hourlyShape.map(f => Math.round((dayTotal * f) / shapeSum));
   // ปัดเศษแล้วรวมไม่พอดี — ใส่ส่วนต่างไว้ชั่วโมงที่คนมากสุด (14:00)
-  hourly[14] += dayTotal - hourly.reduce((a, b) => a + b, 0);
+  hourly[hourlyShape.indexOf(Math.max(...hourlyShape))] += dayTotal - hourly.reduce((a, b) => a + b, 0);
 
   const fiscalTotal = monthly.reduce((a, b) => a + b, 0);
 
@@ -56,11 +52,16 @@ export function generateTelemedicineReport(start: string, end: string): Telemedi
     fiscalYear: fyStartYear + 1 + 543,
     day: { date: end, total: dayTotal, fromAppointment, walkin: dayTotal - fromAppointment },
     // ตรวจสอบสิทธิ (ovst_seq.pttype_check) ครบทุกครั้ง 488 / 488
-    month: { total: monthly[currentFyMonth], rightVerifiedPct: 100 },
+    month: { total: rangeTotal('tele', monthStart(end), end), rightVerifiedPct: 100 },
     fiscal: { total: fiscalTotal },
-    range: { total: rangeTotal, workdays, avgPerDay: Number((rangeTotal / workdays).toFixed(1)) },
+    range: { total: rangeSum, workdays, avgPerDay: Number((rangeSum / workdays).toFixed(1)) },
     hourly: { labels: Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`), values: hourly },
-    clinics: CLINICS.map(([label, share]) => ({ label, value: Math.round(fiscalTotal * share) })),
+    // คลินิกของปีงบ (oapp.visit_vn → clinic จริง) ปรับให้รวมเท่ายอดปีงบ
+    clinics: (() => {
+      const items = rankItems(BD.teleClinic, `${fyStartYear}-10-01`, end).slice(0, 6);
+      const values = scaleTo(items.map(([, v]) => v), fiscalTotal);
+      return items.map(([label], i) => ({ label, value: values[i] }));
+    })(),
     monthly: { labels: MONTHS, values: monthly },
   };
 }

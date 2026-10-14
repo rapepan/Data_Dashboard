@@ -6,7 +6,7 @@
 
 /** ข้อมูลจริงถ่ายไว้ถึงวันที่นี้ — เดือนนี้ในตารางจึงเป็นยอด "ถึงวันที่ SNAPSHOT_DAY" ไม่ใช่ทั้งเดือน */
 export const SNAPSHOT_MONTH = '2026-10';
-export const SNAPSHOT_DAY = 5;
+export const SNAPSHOT_DAY = 13;
 
 export type MonthTable = Record<string, number>;
 

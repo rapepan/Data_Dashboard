@@ -35,6 +35,7 @@ const RULES: Rule[] = [
   rule('GET', '/dental/report', 'ทันตกรรม'),
   rule('GET', '/physio/report', 'กายภาพบำบัด'),
   rule('GET', '/telemedicine/report', 'Telemedicine'),
+  rule('GET', '/telepharmacy/report', 'Telepharmacy'),
   rule('GET', '/postal-drug/report', 'การส่งยาทางไปรษณีย์'),
   rule('GET', '/thai-medicine/report', 'แพทย์แผนไทย / แผนจีน'),
   rule('GET', '/drug-budget/report', 'ปริมาณการใช้ยา'),
